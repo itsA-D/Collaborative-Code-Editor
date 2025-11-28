@@ -1,0 +1,86 @@
+{
+  "info": {
+    "name": "Collaborative Editor API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth Register",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {"raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api","auth","register"]},
+        "body": {"mode": "raw", "raw": "{\n  \"name\": \"Alice\",\n  \"email\": \"alice@example.com\",\n  \"password\": \"Password123!\"\n}"}
+      }
+    },
+    {
+      "name": "Auth Login",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {"raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"]},
+        "body": {"mode": "raw", "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"Password123!\"\n}"}
+      }
+    },
+    {
+      "name": "Create Snippet",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{token}}"}
+        ],
+        "url": {"raw": "{{baseUrl}}/api/snippets", "host": ["{{baseUrl}}"], "path": ["api","snippets"]},
+        "body": {"mode": "raw", "raw": "{\n  \"title\": \"MySnippet\",\n  \"html\": \"<h1>Hello</h1>\",\n  \"css\": \"h1{color:red;}\",\n  \"js\": \"console.log('hi')\",\n  \"isPublic\": true\n}"}
+      }
+    },
+    {
+      "name": "Get Snippet",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {"raw": "{{baseUrl}}/api/snippets/:id", "host": ["{{baseUrl}}"], "path": ["api","snippets",":id"]}
+      }
+    },
+    {
+      "name": "Update Snippet",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{token}}"}
+        ],
+        "url": {"raw": "{{baseUrl}}/api/snippets/:id", "host": ["{{baseUrl}}"], "path": ["api","snippets",":id"]},
+        "body": {"mode": "raw", "raw": "{\n  \"title\": \"Updated\",\n  \"html\": \"<h1>Updated</h1>\"\n}"}
+      }
+    },
+    {
+      "name": "Delete Snippet",
+      "request": {
+        "method": "DELETE",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+        "url": {"raw": "{{baseUrl}}/api/snippets/:id", "host": ["{{baseUrl}}"], "path": ["api","snippets",":id"]}
+      }
+    },
+    {
+      "name": "Fork Snippet",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+        "url": {"raw": "{{baseUrl}}/api/snippets/:id/fork", "host": ["{{baseUrl}}"], "path": ["api","snippets",":id","fork"]}
+      }
+    },
+    {
+      "name": "List Public Snippets",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {"raw": "{{baseUrl}}/api/snippets?page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["api","snippets"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}]}
+      }
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:4000"},
+    {"key": "token", "value": ""}
+  ]
+}
