@@ -8,7 +8,8 @@ export function useSocket(token: string | null) {
   useEffect(() => {
     if (!token) return;
     setStatus('connecting');
-    const url = (import.meta as any).env.VITE_SOCKET_URL || 'http://localhost:4000';
+    const envAny = (import.meta as any).env;
+    const url = envAny.VITE_SOCKET_URL || envAny.VITE_API_URL || 'http://localhost:4000';
     const s = io(url, { auth: { token } });
     socketRef.current = s;
 
