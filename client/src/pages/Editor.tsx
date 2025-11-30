@@ -20,6 +20,7 @@ export default function EditorPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [remoteCursors, setRemoteCursors] = useState<{ [K in 'html'|'css'|'js']: Record<string, { id: string; name: string; color: string; position: { lineNumber: number; column: number } }>}>({ html: {}, css: {}, js: {} });
   const [banner, setBanner] = useState<string | null>(null);
+  const [typing, setTyping] = useState<{ [K in 'html'|'css'|'js']: Record<string, { id: string; name: string; color: string; ts: number }> }>({ html: {}, css: {}, js: {} });
   const nav = useNavigate();
 
   const draftKey = useMemo(() => `draft:${snippetId}`, [snippetId]);
@@ -88,11 +89,34 @@ export default function EditorPage() {
       }));
     };
 
+    const onTyping = (p: any) => {
+      const { userId, name, language, ts } = p || {};
+      if (!userId || !language) return;
+      // infer color from presence if possible
+      const u = users.find(x => x.id === userId);
+      const color = u?.color || 'var(--accent)';
+      setTyping(prev => ({
+        ...prev,
+        [language]: { ...prev[language as 'html'|'css'|'js'], [userId]: { id: userId, name, color, ts: ts || Date.now() } }
+      }));
+      // auto-remove after 1.6s
+      setTimeout(() => {
+        setTyping(prev => {
+          const next = { html: { ...prev.html }, css: { ...prev.css }, js: { ...prev.js } } as typeof prev;
+          const map = { ...(next as any)[language] };
+          delete map[userId];
+          (next as any)[language] = map;
+          return next;
+        });
+      }, 1600);
+    };
+
     socket.on('active-users', onActive);
     socket.on('user-joined', onJoined);
     socket.on('user-left', onLeft);
     socket.on('code-updated', onCode);
     socket.on('cursor-updated', onCursor);
+    socket.on('user-typing', onTyping);
 
     return () => {
       socket.emit('leave-snippet', { snippetId });
@@ -101,6 +125,7 @@ export default function EditorPage() {
       socket.off('user-left', onLeft);
       socket.off('code-updated', onCode);
       socket.off('cursor-updated', onCursor);
+      socket.off('user-typing', onTyping);
     };
   }, [socket, snippetId, draftKey]);
 
@@ -163,12 +188,17 @@ export default function EditorPage() {
             <button className={`tab ${tab==='css' ? 'active' : ''}`} onClick={()=>setTab('css')}>CSS</button>
             <button className={`tab ${tab==='js' ? 'active' : ''}`} onClick={()=>setTab('js')}>JS</button>
           </div>
+          <div className="typing-indicators">
+            {Object.values(typing[tab] || {}).filter((u:any)=>u.id!==user?.id).slice(0,3).map((u:any)=> (
+              <span key={u.id} className="typing-pill" style={{ borderColor: u.color, color: u.color }}>{u.name} typing…</span>
+            ))}
+          </div>
           <div style={{ flex:1, minHeight:0 }}>
             {tab==='html' && (
               <CodeEditor
                 language="html"
                 value={html}
-                onChange={(v)=>{setHtml(v); broadcast('html', v);}}
+                onChange={(v)=>{setHtml(v); broadcast('html', v); socket?.emit('typing', { snippetId, language: 'html' });}}
                 onCursor={(pos)=> socket?.emit('cursor-move', { snippetId, language: 'html', position: pos })}
                 others={Object.values(remoteCursors.html || {}).filter((u: any) => u.id !== user?.id) as { id: string; name: string; color: string; position: { lineNumber: number; column: number } }[]}
               />
@@ -177,7 +207,7 @@ export default function EditorPage() {
               <CodeEditor
                 language="css"
                 value={css}
-                onChange={(v)=>{setCss(v); broadcast('css', v);}}
+                onChange={(v)=>{setCss(v); broadcast('css', v); socket?.emit('typing', { snippetId, language: 'css' });}}
                 onCursor={(pos)=> socket?.emit('cursor-move', { snippetId, language: 'css', position: pos })}
                 others={Object.values(remoteCursors.css || {}).filter((u: any) => u.id !== user?.id) as { id: string; name: string; color: string; position: { lineNumber: number; column: number } }[]}
               />
@@ -186,7 +216,7 @@ export default function EditorPage() {
               <CodeEditor
                 language="javascript"
                 value={js}
-                onChange={(v)=>{setJs(v); broadcast('js', v);}}
+                onChange={(v)=>{setJs(v); broadcast('js', v); socket?.emit('typing', { snippetId, language: 'js' });}}
                 onCursor={(pos)=> socket?.emit('cursor-move', { snippetId, language: 'js', position: pos })}
                 others={Object.values(remoteCursors.js || {}).filter((u: any) => u.id !== user?.id) as { id: string; name: string; color: string; position: { lineNumber: number; column: number } }[]}
               />

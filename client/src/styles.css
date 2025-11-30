@@ -111,3 +111,7 @@ html[data-theme="light"] .auth-card { box-shadow: 0 10px 30px rgba(0,0,0,0.08); 
   .explore-actions { width: 100%; }
   .explore-actions .input { flex:1; min-width: 0; }
 }
+
+/* Typing indicators */
+.typing-indicators { display:flex; gap:6px; min-height: 22px; margin: 4px 0 8px; flex-wrap: wrap; }
+.typing-pill { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--control-border); background: var(--control-bg); font-size: 12px; }

@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io';
-import { verifyJwt, JwtUser } from '../utils/jwt';
-import { redis } from '../db/redis';
-import { Snippet } from '../models/Snippet';
+import { verifyJwt, JwtUser } from '../../utils/jwt';
+import { redis } from '../../db/redis';
+import { Snippet } from '../../models/Snippet';
 
 const COLORS = [
   '#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#84cc16'
@@ -23,6 +23,8 @@ interface CodeState { html: string; css: string; js: string; htmlUpdatedAt: numb
 const perSnippetTimers: Map<string, { debounce: Map<Lang, NodeJS.Timeout>, autosave?: NodeJS.Timeout }> = new Map();
 // Track which snippets a socket has joined for disconnect cleanup
 const socketSnippets: Map<string, Set<string>> = new Map();
+// Throttle typing notifications per user/snippet/language
+const typingThrottle = new Map<string, number>();
 
 async function getOrInitCode(snippetId: string): Promise<CodeState> {
   const data = await redis.hgetall(codeKey(snippetId));
@@ -139,6 +141,15 @@ export function initSocket(io: Server) {
 
     socket.on('cursor-move', ({ snippetId, language, position }: { snippetId: string; language: Lang; position: any }) => {
       socket.to(room(snippetId)).emit('cursor-updated', { userId: user.id, name: user.name, color: colorFor(user.id), position, language });
+    });
+
+    socket.on('typing', ({ snippetId, language }: { snippetId: string; language: Lang }) => {
+      const key = `${user.id}:${snippetId}:${language}`;
+      const now = Date.now();
+      const last = typingThrottle.get(key) || 0;
+      if (now - last < 700) return; // throttle
+      typingThrottle.set(key, now);
+      socket.to(room(snippetId)).emit('user-typing', { userId: user.id, name: user.name, language, ts: now });
     });
 
     async function leave(snippetId: string) {
