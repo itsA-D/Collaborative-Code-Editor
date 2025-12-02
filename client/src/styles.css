@@ -3,7 +3,7 @@
   --panel: #111a2f;
   --text: #e6edf3;
   --muted: #9aa4b2;
-  --accent: #3b82f6;
+  --accent: #a305ff;
   --danger: #ef4444;
   --border: #1f2a44;
   --control-bg: #0f172a;
@@ -11,6 +11,9 @@
   --button-bg: #1a2540;
   --button-border: #2a3760;
   --preview-bg: #0b1020;
+  --glass-panel: color-mix(in srgb, var(--panel) 84%, transparent);
+  --glow: rgba(167, 30, 222, 0.22);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.45);
 }
 
 /* Light theme */
@@ -18,9 +21,9 @@ html[data-theme="light"] {
   --bg: #f6f8fa;
   --panel: #ffffff;
   --text: #0c1117;
-  --muted: #6b7280;
-  --accent: #2563eb;
-  --danger: #dc2626;
+  --muted: #566a91;
+  --accent: #a974ffcd;
+  --danger: #ff3604c3;
   --border: #d0d7de;
   --control-bg: #ffffff;
   --control-border: #d0d7de;
@@ -32,7 +35,7 @@ html[data-theme="light"] {
 * { box-sizing: border-box; }
 body, html, #root { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; }
 
-.app { display: flex; flex-direction: column; height: 100%; }
+.app { display: flex; flex-direction: column; height: 100%; position: relative; z-index: 1; }
 .topbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .brand { color: var(--text); text-decoration: none; font-weight: 700; }
 .spacer { flex: 1; }
@@ -115,3 +118,57 @@ html[data-theme="light"] .auth-card { box-shadow: 0 10px 30px rgba(0,0,0,0.08); 
 /* Typing indicators */
 .typing-indicators { display:flex; gap:6px; min-height: 22px; margin: 4px 0 8px; flex-wrap: wrap; }
 .typing-pill { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--control-border); background: var(--control-bg); font-size: 12px; }
+
+/* Ambient background for editor pages */
+.editor-layout { position: relative; }
+.editor-layout::before { content:''; position: fixed; inset: -20%; pointer-events: none; z-index: 0; filter: blur(32px); opacity: .75; background:
+  radial-gradient(900px 520px at 10% -10%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%),
+  radial-gradient(900px 520px at 110% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%);
+}
+
+/* Cursor hover glow — placed behind UI and aligned 1:1 with cursor */
+body::before { content:''; position: fixed; inset: 0; pointer-events: none; z-index: 0; filter: blur(26px); opacity: .85; background:
+  radial-gradient(180px 180px at var(--mx, 50%) var(--my, 50%), var(--glow), rgba(59,130,246,0) 60%);
+}
+html[data-theme="light"] body::before { background:
+  radial-gradient(180px 180px at var(--mx, 50%) var(--my, 50%), rgba(37,99,235,0.18), rgba(37,99,235,0) 60%);
+}
+
+/* Glassmorphism polish */
+.topbar { backdrop-filter: blur(12px); background: color-mix(in srgb, var(--panel) 86%, transparent); border-bottom-color: color-mix(in srgb, var(--border) 80%, transparent); box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
+.editor-toolbar { backdrop-filter: blur(12px); background: color-mix(in srgb, var(--panel) 86%, transparent); border-bottom-color: color-mix(in srgb, var(--border) 80%, transparent); }
+.card { position: relative; background: var(--glass-panel); border-color: color-mix(in srgb, var(--border) 80%, transparent); box-shadow: var(--shadow-lg); }
+.card::before { content:''; position:absolute; inset:0; border-radius: inherit; pointer-events:none; background:
+  linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0) 40%);
+  opacity:.7;
+}
+
+/* Buttons & controls */
+.btn { transition: transform .12s ease, box-shadow .2s ease, border-color .2s ease, background-color .2s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(0,0,0,0.28), 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent) inset; border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.btn:active { transform: translateY(0); box-shadow: 0 4px 12px rgba(0,0,0,0.24); }
+
+/* Tabs */
+.tabs { padding: 4px; background: color-mix(in srgb, var(--control-bg) 80%, transparent); border: 1px solid var(--control-border); border-radius: 10px; }
+.tab { background: transparent; border-color: transparent; color: var(--text); }
+.tab:hover { background: color-mix(in srgb, var(--button-bg) 70%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.tab.active { background: color-mix(in srgb, var(--button-bg) 90%, transparent); border-color: var(--accent); }
+
+/* Editor split */
+.editor-main { gap: 12px; padding: 12px; }
+.preview { border: 1px solid var(--border); background: var(--preview-bg); box-shadow: 0 10px 24px rgba(0,0,0,0.24) inset; }
+
+/* Pen cards */
+.pen-card { background: var(--glass-panel); border-color: color-mix(in srgb, var(--border) 70%, transparent); box-shadow: 0 8px 28px rgba(0,0,0,0.30); }
+.pen-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 12px 34px rgba(0,0,0,0.34); }
+
+/* Light theme refinements */
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .editor-toolbar { background: color-mix(in srgb, var(--panel) 94%, transparent); }
+html[data-theme="light"] .card { box-shadow: 0 8px 28px rgba(0,0,0,0.10); }
+
+/* Keep code environment clean: force solid background for Monaco editor */
+.monaco-editor,
+.monaco-editor .overflow-guard,
+.monaco-editor .monaco-editor-background,
+.monaco-editor .margin { background: var(--control-bg) !important; }
