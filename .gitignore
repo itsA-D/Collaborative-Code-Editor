@@ -33,3 +33,9 @@ Thumbs.db
 coverage/
 .tmp/
 *.sqlite
+
+
+
+# others
+
+FeUpdate.me

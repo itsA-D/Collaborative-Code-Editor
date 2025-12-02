@@ -10,7 +10,7 @@ import { redis } from './db/redis';
 import authRoutes from './routes/auth';
 import snippetRoutes from './routes/snippets';
 import { apiLimiter } from './middleware/rateLimit';
-import { initSocket } from './socket';
+import { initSocket } from './routes/socket';
 
 async function bootstrap() {
   await connectMongo();
@@ -18,7 +18,7 @@ async function bootstrap() {
 
   const app = express();
   app.use(helmet());
-  const allowed = (env.CORS_ORIGIN || '').split(',').map(s=>s.trim()).filter(Boolean);
+  const allowed = (env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
   app.use(cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
@@ -31,6 +31,17 @@ async function bootstrap() {
   app.use(morgan('dev'));
   app.use(apiLimiter);
 
+  app.get('/', (_req, res) => {
+    res.json({
+      message: 'Collaborative Code Editor API is running',
+      endpoints: {
+        health: '/health',
+        auth: '/api/auth',
+        snippets: '/api/snippets'
+      }
+    });
+  });
+
   app.get('/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRoutes);
   app.use('/api/snippets', snippetRoutes);
@@ -39,7 +50,7 @@ async function bootstrap() {
   const io = new Server(server, {
     cors: {
       origin: allowed.length ? allowed : true,
-      methods: ['GET','POST'],
+      methods: ['GET', 'POST'],
       credentials: true,
     }
   });
