@@ -44,7 +44,7 @@ async function bootstrap() {
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: {
-      origin: allowed.length ? allowed : true,
+      origin: true,
       methods: ['GET', 'POST'],
       credentials: true,
     }
