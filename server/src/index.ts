@@ -17,6 +17,7 @@ async function bootstrap() {
   await redis.ping();
 
   const app = express();
+  app.set('trust proxy', 1); // Required for Render/Vercel proxies
   app.use(helmet());
   app.use(cors({
     origin: true, // Allow all origins strictly for debugging
