@@ -18,13 +18,8 @@ async function bootstrap() {
 
   const app = express();
   app.use(helmet());
-  const allowed = (env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
   app.use(cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (allowed.length === 0 || allowed.includes(origin)) return cb(null, true);
-      return cb(new Error('Not allowed by CORS'));
-    },
+    origin: true, // Allow all origins strictly for debugging
     credentials: true,
   }));
   app.use(express.json({ limit: '1mb' }));
