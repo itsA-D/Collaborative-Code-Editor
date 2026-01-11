@@ -73,7 +73,7 @@ router.get('/', async (req, res) => {
   const limit = parseInt((req.query.limit as string) || '10', 10);
   const skip = (page - 1) * limit;
   const filter: any = { isPublic: true };
-  if (req.query.owner) filter.owner = req.query.owner;
+  if (req.query.owner) filter.owner = new Types.ObjectId(req.query.owner as string);
 
   const [items, total] = await Promise.all([
     Snippet.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit),
