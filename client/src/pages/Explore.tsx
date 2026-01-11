@@ -40,19 +40,21 @@ export default function Explore() {
             <h1 className="hero-title">Create. Fork. Collaborate.</h1>
             <p className="hero-sub">A CodePen-like space for HTML/CSS/JS with real-time collab.</p>
           </div>
-          <div className="explore-actions">
-            <input className="input input-lg" value={title} onChange={e=>setTitle(e.target.value)} placeholder="New snippet title" />
-            <button className="btn primary btn-lg" onClick={createSnippet}>New Pen</button>
-          </div>
+          {user && (
+            <div className="explore-actions">
+              <input className="input input-lg" value={title} onChange={e => setTitle(e.target.value)} placeholder="New snippet title" />
+              <button className="btn primary btn-lg" onClick={createSnippet}>New Pen</button>
+            </div>
+          )}
         </div>
       </section>
 
       <div className="explore-toolbar">
-        <input className="input" placeholder="Search snippets" value={q} onChange={e=>setQ(e.target.value)} />
+        <input className="input" placeholder="Search snippets" value={q} onChange={e => setQ(e.target.value)} />
         <div className="pager">
-          <button className="btn" disabled={page<=1} onClick={() => load(page-1)}>Prev</button>
+          <button className="btn" disabled={page <= 1} onClick={() => load(page - 1)}>Prev</button>
           <span className="status">Page {page} / {pages}</span>
-          <button className="btn" disabled={page>=pages} onClick={() => load(page+1)}>Next</button>
+          <button className="btn" disabled={page >= pages} onClick={() => load(page + 1)}>Next</button>
         </div>
       </div>
 
