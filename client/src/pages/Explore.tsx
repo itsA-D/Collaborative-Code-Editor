@@ -13,10 +13,11 @@ export default function Explore() {
   const nav = useNavigate();
 
   async function load(p = 1) {
-    const res = await api.get(`/api/snippets?page=${p}&limit=12`);
+    if (!user) { setItems([]); setTotal(0); return; }
+    const res = await api.get(`/api/snippets?page=${p}&limit=12&owner=${user.id}`);
     setItems(res.data.items); setTotal(res.data.total); setPage(res.data.page);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user]);
 
   const visible = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -40,10 +41,14 @@ export default function Explore() {
             <h1 className="hero-title">Create. Fork. Collaborate.</h1>
             <p className="hero-sub">A CodePen-like space for HTML/CSS/JS with real-time collab.</p>
           </div>
-          {user && (
+          {user ? (
             <div className="explore-actions">
               <input className="input input-lg" value={title} onChange={e => setTitle(e.target.value)} placeholder="New snippet title" />
               <button className="btn primary btn-lg" onClick={createSnippet}>New Pen</button>
+            </div>
+          ) : (
+            <div className="explore-actions">
+              <button className="btn primary btn-lg" onClick={() => nav('/login')}>Login to Create Snippet</button>
             </div>
           )}
         </div>
