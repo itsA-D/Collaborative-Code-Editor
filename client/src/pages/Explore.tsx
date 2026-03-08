@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../state/AuthContext';
+import Modal from '../components/Modal';
 
 export default function Explore() {
   const [items, setItems] = useState<any[]>([]);
@@ -9,6 +10,11 @@ export default function Explore() {
   const [total, setTotal] = useState(0);
   const [title, setTitle] = useState('New Snippet');
   const [q, setQ] = useState('');
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: string | null; title: string }>({
+    isOpen: false,
+    id: null,
+    title: ''
+  });
   const { user } = useAuth();
   const nav = useNavigate();
 
@@ -29,6 +35,17 @@ export default function Explore() {
     if (!user) { nav('/login'); return; }
     const res = await api.post('/api/snippets', { title, html: '<h1>Hello</h1>', css: 'h1{color:#3b82f6;}', js: "console.log('Hello')", isPublic: true });
     nav(`/editor/${res.data._id}`);
+  }
+
+  async function deleteSnippet() {
+    if (!deleteModal.id) return;
+    try {
+      await api.delete(`/api/snippets/${deleteModal.id}`);
+      setDeleteModal({ isOpen: false, id: null, title: '' });
+      load(page); // Reload current page
+    } catch (e: any) {
+      alert(e?.response?.data?.message || 'Delete failed');
+    }
   }
 
   const pages = Math.ceil(total / 12) || 1;
@@ -72,7 +89,13 @@ export default function Explore() {
             </div>
             <div className="pen-actions">
               <Link className="btn" to={`/editor/${it._id}`}>Open</Link>
-              <button className="btn" onClick={() => nav(`/editor/${it._id}`)}>Edit</button>
+              <button
+                className="btn"
+                style={{ color: '#ef4444' }}
+                onClick={() => setDeleteModal({ isOpen: true, id: it._id, title: it.title })}
+              >
+                Delete
+              </button>
             </div>
           </div>
         ))}
@@ -80,6 +103,17 @@ export default function Explore() {
           <div className="empty-note">No results. Try a different title.</div>
         )}
       </div>
+
+      <Modal
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({ isOpen: false, id: null, title: '' })}
+        onConfirm={deleteSnippet}
+        title="Delete Snippet"
+        message={`Are you sure you want to delete "${deleteModal.title}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDanger={true}
+      />
     </div>
   );
 }

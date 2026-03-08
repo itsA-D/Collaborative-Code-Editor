@@ -4,7 +4,7 @@ import { redis } from '../../db/redis';
 import { Snippet } from '../../models/Snippet';
 
 const COLORS = [
-  '#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#84cc16'
+  '#ef4444','#f59e0b','#10b981','#3b82f6','#926fe4ff','#ec4899','#14b8a6','#84cc16'
 ];
 
 function colorFor(id: string) {
@@ -12,53 +12,16 @@ function colorFor(id: string) {
   return COLORS[h % COLORS.length];
 }
 
-function codeKey(snippetId: string) { return `snippet:${snippetId}:code`; }
 function usersKey(snippetId: string) { return `snippet:${snippetId}:users`; }
 function room(snippetId: string) { return `snippet:${snippetId}`; }
 
 type Lang = 'html'|'css'|'js';
 
-interface CodeState { html: string; css: string; js: string; htmlUpdatedAt: number; cssUpdatedAt: number; jsUpdatedAt: number; }
-
-const perSnippetTimers: Map<string, { debounce: Map<Lang, NodeJS.Timeout>, autosave?: NodeJS.Timeout }> = new Map();
+const perSnippetTimers: Map<string, { autosave?: NodeJS.Timeout }> = new Map();
 // Track which snippets a socket has joined for disconnect cleanup
 const socketSnippets: Map<string, Set<string>> = new Map();
 // Throttle typing notifications per user/snippet/language
 const typingThrottle = new Map<string, number>();
-
-async function getOrInitCode(snippetId: string): Promise<CodeState> {
-  const data = await redis.hgetall(codeKey(snippetId));
-  if (Object.keys(data).length) {
-    return {
-      html: data.html || '', css: data.css || '', js: data.js || '',
-      htmlUpdatedAt: Number(data.htmlUpdatedAt || 0),
-      cssUpdatedAt: Number(data.cssUpdatedAt || 0),
-      jsUpdatedAt: Number(data.jsUpdatedAt || 0),
-    };
-  }
-  const snip = await Snippet.findById(snippetId);
-  const state: CodeState = {
-    html: snip?.html || '', css: snip?.css || '', js: snip?.js || '',
-    htmlUpdatedAt: Date.now(), cssUpdatedAt: Date.now(), jsUpdatedAt: Date.now()
-  };
-  await redis.hset(codeKey(snippetId), {
-    html: state.html, css: state.css, js: state.js,
-    htmlUpdatedAt: String(state.htmlUpdatedAt),
-    cssUpdatedAt: String(state.cssUpdatedAt),
-    jsUpdatedAt: String(state.jsUpdatedAt),
-  });
-  return state;
-}
-
-async function setCode(snippetId: string, lang: Lang, code: string, ts: number) {
-  const k = codeKey(snippetId);
-  const currentTs = Number(await redis.hget(k, `${lang}UpdatedAt`)) || 0;
-  if (ts >= currentTs) {
-    await redis.hset(k, { [lang]: code, [`${lang}UpdatedAt`]: String(ts) });
-    return true;
-  }
-  return false;
-}
 
 async function getUsers(snippetId: string) {
   const raw = await redis.hgetall(usersKey(snippetId));
@@ -71,14 +34,6 @@ async function addUser(snippetId: string, user: { id: string; name: string; colo
 
 async function removeUser(snippetId: string, userId: string) {
   await redis.hdel(usersKey(snippetId), userId);
-}
-
-async function autosave(snippetId: string) {
-  const data = await redis.hgetall(codeKey(snippetId));
-  if (!data) return;
-  await Snippet.findByIdAndUpdate(snippetId, {
-    html: data.html || '', css: data.css || '', js: data.js || '', lastSavedAt: new Date()
-  });
 }
 
 export function initSocket(io: Server) {
@@ -105,15 +60,12 @@ export function initSocket(io: Server) {
       await addUser(snippetId, { id: user.id, name: user.name, color: c });
       socket.join(room(snippetId));
 
-      const state = await getOrInitCode(snippetId);
-      socket.emit('code-updated', { language: 'all', html: state.html, css: state.css, js: state.js });
-
       const users = await getUsers(snippetId);
       io.to(room(snippetId)).emit('active-users', users);
       socket.to(room(snippetId)).emit('user-joined', { id: user.id, name: user.name, color: c });
 
       // ensure autosave interval
-      if (!perSnippetTimers.has(snippetId)) perSnippetTimers.set(snippetId, { debounce: new Map() });
+      if (!perSnippetTimers.has(snippetId)) perSnippetTimers.set(snippetId, {});
       const timers = perSnippetTimers.get(snippetId)!;
       if (!timers.autosave) {
         timers.autosave = setInterval(() => autosave(snippetId), 30000);
@@ -125,20 +77,7 @@ export function initSocket(io: Server) {
       socketSnippets.set(socket.id, set);
     });
 
-    socket.on('code-change', async ({ snippetId, language, code, ts }: { snippetId: string; language: Lang; code: string; ts: number; }) => {
-      const updated = await setCode(snippetId, language, code, ts);
-      if (!updated) return;
-      // debounce broadcast
-      if (!perSnippetTimers.has(snippetId)) perSnippetTimers.set(snippetId, { debounce: new Map() });
-      const timers = perSnippetTimers.get(snippetId)!;
-      const existing = timers.debounce.get(language);
-      if (existing) clearTimeout(existing);
-      const t = setTimeout(() => {
-        socket.to(room(snippetId)).emit('code-updated', { language, code });
-      }, 200);
-      timers.debounce.set(language, t);
-    });
-
+    // Cursor updates - still useful for non-editor cursors if needed
     socket.on('cursor-move', ({ snippetId, language, position }: { snippetId: string; language: Lang; position: any }) => {
       socket.to(room(snippetId)).emit('cursor-updated', { userId: user.id, name: user.name, color: colorFor(user.id), position, language });
     });
@@ -163,7 +102,6 @@ export function initSocket(io: Server) {
         const timers = perSnippetTimers.get(snippetId);
         if (timers?.autosave) clearInterval(timers.autosave);
         perSnippetTimers.delete(snippetId);
-        await autosave(snippetId);
       }
       // update membership map
       const set = socketSnippets.get(socket.id);
@@ -190,11 +128,18 @@ export function initSocket(io: Server) {
             const timers = perSnippetTimers.get(sid);
             if (timers?.autosave) clearInterval(timers.autosave);
             perSnippetTimers.delete(sid);
-            await autosave(sid);
           }
         }
         socketSnippets.delete(socket.id);
       }
     });
   });
+}
+
+// Autosave - reads from Redis via Yjs (not needed anymore as Yjs handles persistence)
+// This is kept for compatibility but no longer called
+async function autosave(snippetId: string) {
+  // Yjs handles persistence separately via the y-websocket server
+  // This function is kept for socket.io compatibility but does nothing
+  console.log(`Autosave triggered for ${snippetId} - Yjs handles persistence`);
 }

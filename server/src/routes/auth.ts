@@ -14,8 +14,8 @@ router.post('/register', async (req, res) => {
   if (existing) return res.status(409).json({ message: 'Email already in use' });
   const hash = await bcrypt.hash(password, 10);
   const user = await User.create({ name, email, password: hash });
-  const token = signJwt({ id: user.id, name: user.name, email: user.email });
-  res.json({ token, user });
+  const token = signJwt({ id: user._id.toString(), name: user.name, email: user.email });
+  res.json({ token, user: { id: user._id.toString(), name: user.name, email: user.email } });
 });
 
 router.post('/login', async (req, res) => {
@@ -26,8 +26,8 @@ router.post('/login', async (req, res) => {
   if (!user) return res.status(401).json({ message: 'Invalid credentials' });
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return res.status(401).json({ message: 'Invalid credentials' });
-  const token = signJwt({ id: user.id, name: user.name, email: user.email });
-  res.json({ token, user });
+  const token = signJwt({ id: user._id.toString(), name: user.name, email: user.email });
+  res.json({ token, user: { id: user._id.toString(), name: user.name, email: user.email } });
 });
 
 export default router;

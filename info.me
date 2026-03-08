@@ -1,0 +1,22 @@
+No, you did not use Conflict-free Replicated Data Types (CRDTs) in this project.
+
+Instead, the project implements a Last-Write-Wins (LWW) strategy for conflict resolution.
+
+Evidence from your codebase:
+
+README.md explicitly states:
+"Conflict Resolution: We utilize a 'Last-Write-Wins' strategy with timestamp validation. This is robust for typical pair programming but does not offer the same character-level merge guarantees as Operational Transformation (OT) or CRDTs..."
+
+server/src/routes/socket/index.ts implements this logic in the setCode function:
+typescript
+async function setCode(snippetId: string, lang: Lang, code: string, ts: number) {
+  // ...
+  const currentTs = Number(await redis.hget(k, `${lang}UpdatedAt`)) || 0;
+  if (ts >= currentTs) {
+    // Updates only if the incoming timestamp is newer or equal
+    await redis.hset(k, { [lang]: code, [`${lang}UpdatedAt`]: String(ts) });
+    return true;
+  }
+  return false;
+}
+No Dependencies: There are no CRDT libraries (like yjs, automerge, or sharedb) listed in your package.json files.
