@@ -1,3 +1,4 @@
+// Server entry point
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -64,12 +65,29 @@ async function bootstrap() {
   const ydocs = new Map<string, Y.Doc>();
   const PERSIST_INTERVAL = 30000; // 30 seconds
 
-  // Persist Yjs docs to Redis
+  // Persist Yjs docs to Redis AND MongoDB
   async function persistDoc(docName: string) {
     const doc = ydocs.get(docName);
     if (!doc) return;
+
+    // 1. Save binary state to Redis for fast real-time sync
     const state = Y.encodeStateAsUpdate(doc);
     await redis.set(`yjs:${docName}`, Buffer.from(state));
+
+    // 2. Save clear text to MongoDB so the rest of the app (REST API, Explore) can read it
+    if (docName.startsWith('snippet-')) {
+      const snippetId = docName.replace('snippet-', '');
+      try {
+        await Snippet.findByIdAndUpdate(snippetId, {
+          html: doc.getText('html').toString(),
+          css: doc.getText('css').toString(),
+          js: doc.getText('js').toString(),
+          lastSavedAt: new Date()
+        });
+      } catch (err) {
+        console.error(`Autosave to MongoDB failed for ${snippetId}:`, err);
+      }
+    }
   }
 
   // Autosave all active docs periodically
@@ -105,12 +123,15 @@ async function bootstrap() {
           console.log(`Loaded Yjs state for ${docName} from Redis`);
         } else {
           // Seed from MongoDB if no Redis state
-          const snip = await Snippet.findById(docName);
-          if (snip) {
-            doc.getText('html').insert(0, snip.html || '');
-            doc.getText('css').insert(0, snip.css || '');
-            doc.getText('js').insert(0, snip.js || '');
-            console.log(`Seeded Yjs doc ${docName} from MongoDB`);
+          if (docName.startsWith('snippet-')) {
+            const snippetId = docName.replace('snippet-', '');
+            const snip = await Snippet.findById(snippetId);
+            if (snip) {
+              doc.getText('html').insert(0, snip.html || '');
+              doc.getText('css').insert(0, snip.css || '');
+              doc.getText('js').insert(0, snip.js || '');
+              console.log(`Seeded Yjs doc ${docName} from MongoDB`);
+            }
           }
         }
       } catch (err) {
