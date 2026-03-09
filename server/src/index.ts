@@ -17,6 +17,12 @@ import { setupWSConnection, getYDoc } from 'y-websocket/bin/utils';
 import * as Y from 'yjs';
 import { Snippet } from './models/Snippet';
 
+// Global store for Yjs docs - accessible from routes
+export const ydocs = new Map<string, Y.Doc>();
+export const ydocUpdater = {
+  update: (_docName: string, _updates: { html?: string; css?: string; js?: string }) => false
+};
+
 async function bootstrap() {
   await connectMongo();
   await redis.ping();
@@ -61,9 +67,33 @@ async function bootstrap() {
   const yjsPort = env.YJS_PORT || 1234;
   const yjsWss = new WebSocketServer({ port: yjsPort });
 
-  // Track active Yjs documents for persistence
-  const ydocs = new Map<string, Y.Doc>();
   const PERSIST_INTERVAL = 30000; // 30 seconds
+
+  // Update exported ydocUpdater when bootstrap runs
+  ydocUpdater.update = function(docName: string, updates: { html?: string; css?: string; js?: string }) {
+    const doc = ydocs.get(docName);
+    if (!doc) return false;
+
+    if (updates.html !== undefined) {
+      const yText = doc.getText('html');
+      yText.delete(0, yText.length);
+      yText.insert(0, updates.html);
+    }
+    if (updates.css !== undefined) {
+      const yText = doc.getText('css');
+      yText.delete(0, yText.length);
+      yText.insert(0, updates.css);
+    }
+    if (updates.js !== undefined) {
+      const yText = doc.getText('js');
+      yText.delete(0, yText.length);
+      yText.insert(0, updates.js);
+    }
+
+    // Also persist to Redis immediately
+    persistDoc(docName);
+    return true;
+  }
 
   // Persist Yjs docs to Redis AND MongoDB
   async function persistDoc(docName: string) {

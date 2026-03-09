@@ -19,6 +19,7 @@ export default function EditorPage() {
   const [tab, setTab] = useState<'html' | 'css' | 'js'>('html');
   const [users, setUsers] = useState<any[]>([]);
   const [banner, setBanner] = useState<string | null>(null);
+  const [showAutosaveToast, setShowAutosaveToast] = useState(false);
   const [typing, setTyping] = useState<{ [K in 'html' | 'css' | 'js']: Record<string, { id: string; name: string; color: string; ts: number }> }>({ html: {}, css: {}, js: {} });
   const [deleteModal, setDeleteModal] = useState(false);
   const nav = useNavigate();
@@ -26,14 +27,15 @@ export default function EditorPage() {
   // Yjs state
   const ydocRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
+  const [isYjsReady, setIsYjsReady] = useState(false);
   const [htmlText, setHtmlText] = useState('');
   const [cssText, setCssText] = useState('');
   const [jsText, setJsText] = useState('');
 
   // Get Yjs text types
-  const yHtml = useMemo(() => ydocRef.current?.getText('html') || null, [ydocRef.current]);
-  const yCss = useMemo(() => ydocRef.current?.getText('css') || null, [ydocRef.current]);
-  const yJs = useMemo(() => ydocRef.current?.getText('js') || null, [ydocRef.current]);
+  const yHtml = useMemo(() => isYjsReady ? ydocRef.current?.getText('html') || null : null, [isYjsReady]);
+  const yCss = useMemo(() => isYjsReady ? ydocRef.current?.getText('css') || null : null, [isYjsReady]);
+  const yJs = useMemo(() => isYjsReady ? ydocRef.current?.getText('js') || null : null, [isYjsReady]);
 
   // Initialize Yjs connection
   useEffect(() => {
@@ -45,9 +47,10 @@ export default function EditorPage() {
 
     ydocRef.current = ydoc;
     providerRef.current = wsProvider;
+    setIsYjsReady(true);
 
     // Set user info in awareness
-    const userColors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#926fe4','#ec4899','#14b8a6','#84cc16'];
+    const userColors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#926fe4', '#ec4899', '#14b8a6', '#84cc16'];
     const colorIdx = (user?.id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % userColors.length;
     const color = userColors[colorIdx];
     wsProvider.awareness.setLocalStateField('user', {
@@ -70,6 +73,7 @@ export default function EditorPage() {
       ydoc.off('update', updateHandler);
       wsProvider.destroy();
       ydoc.destroy();
+      setIsYjsReady(false);
     };
   }, [snippetId, token]);
 
@@ -89,8 +93,8 @@ export default function EditorPage() {
     socket.emit('join-snippet', { snippetId });
 
     const onActive = (u: any[]) => setUsers(u);
-    const onJoined = (_: any) => {};
-    const onLeft = (_: any) => {};
+    const onJoined = (_: any) => { };
+    const onLeft = (_: any) => { };
 
     const onTyping = (p: any) => {
       const { userId, name, language, ts } = p || {};
@@ -126,26 +130,51 @@ export default function EditorPage() {
     };
   }, [socket, snippetId]);
 
-  // save via Ctrl+S global event
+  // Autosave and Ctrl+S handler
   useEffect(() => {
-    const handler = () => { doSave(); };
-    window.addEventListener('save-request', handler as any);
-    return () => window.removeEventListener('save-request', handler as any);
-  }, [snippetId, htmlText, cssText, jsText]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        doSave(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [snippetId, user]);
 
-  async function doSave() {
+  // Autosave every 10 seconds
+  useEffect(() => {
+    if (!snippetId || !user) return;
+    const interval = setInterval(() => {
+      doSave(true);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [snippetId, user]);
+
+  async function doSave(isAutoSave: any = false) {
+    const isAuto = isAutoSave === true;
     if (!user) { nav('/login'); return; }
     if (!ydocRef.current) return;
     try {
+      if (isAuto) {
+        setShowAutosaveToast(true);
+        setTimeout(() => setShowAutosaveToast(false), 2000);
+      }
       const doc = ydocRef.current;
       await api.put(`/api/snippets/${snippetId}`, {
         html: doc.getText('html').toString(),
         css: doc.getText('css').toString(),
         js: doc.getText('js').toString(),
       });
-      setBanner('Saved'); setTimeout(() => setBanner(null), 1500);
+      if (!isAuto) {
+        setBanner('Saved');
+        setTimeout(() => setBanner(null), 1500);
+      }
     } catch (e: any) {
-      setBanner(e?.response?.data?.message || 'Save failed');
+      if (!isAuto) {
+        setBanner(e?.response?.data?.message || 'Save failed');
+        setTimeout(() => setBanner(null), 2000);
+      }
     }
   }
 
@@ -214,7 +243,7 @@ export default function EditorPage() {
             ))}
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
-            {tab === 'html' && (
+            <div style={{ display: tab === 'html' ? 'block' : 'none', height: '100%' }}>
               <CodeEditor
                 language="html"
                 yText={yHtml}
@@ -222,8 +251,8 @@ export default function EditorPage() {
                 onCursor={(pos) => socket?.emit('cursor-move', { snippetId, language: 'html', position: pos })}
                 onChange={handleTyping}
               />
-            )}
-            {tab === 'css' && (
+            </div>
+            <div style={{ display: tab === 'css' ? 'block' : 'none', height: '100%' }}>
               <CodeEditor
                 language="css"
                 yText={yCss}
@@ -231,8 +260,8 @@ export default function EditorPage() {
                 onCursor={(pos) => socket?.emit('cursor-move', { snippetId, language: 'css', position: pos })}
                 onChange={handleTyping}
               />
-            )}
-            {tab === 'js' && (
+            </div>
+            <div style={{ display: tab === 'js' ? 'block' : 'none', height: '100%' }}>
               <CodeEditor
                 language="javascript"
                 yText={yJs}
@@ -240,7 +269,7 @@ export default function EditorPage() {
                 onCursor={(pos) => socket?.emit('cursor-move', { snippetId, language: 'js', position: pos })}
                 onChange={handleTyping}
               />
-            )}
+            </div>
           </div>
         </div>
         <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -259,6 +288,7 @@ export default function EditorPage() {
       )}
       <UserPresence
         users={users}
+        isAutosaving={showAutosaveToast}
         onBack={() => {
           const canGoBack = (window.history.state && (window.history.state as any).idx > 0);
           if (canGoBack) nav(-1);

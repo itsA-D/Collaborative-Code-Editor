@@ -3,6 +3,9 @@ import { Types } from 'mongoose';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { Snippet } from '../models/Snippet';
 import { snippetCreateSchema, snippetUpdateSchema } from '../utils/validators';
+import { ydocUpdater, ydocs } from '../index';
+import { redis } from '../db/redis';
+import * as Y from 'yjs';
 
 const router = Router();
 
@@ -48,6 +51,37 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   if (snippet.owner.toString() !== req.user!.id) return res.status(403).json({ message: 'Forbidden' });
   Object.assign(snippet, parsed.data);
   await snippet.save();
+
+  // Update Redis with the new code content for Yjs sync
+  if (parsed.data.html !== undefined || parsed.data.css !== undefined || parsed.data.js !== undefined) {
+    const docName = `snippet-${id}`;
+    const doc = ydocs.get(docName);
+
+    if (doc) {
+      // If Yjs doc exists in memory, use it and persist to Redis
+      ydocUpdater.update(docName, {
+        html: parsed.data.html,
+        css: parsed.data.css,
+        js: parsed.data.js,
+      });
+    } else {
+      // No active Yjs connection - create a temp doc and save to Redis directly
+      const tempDoc = new Y.Doc();
+      if (parsed.data.html !== undefined) {
+        tempDoc.getText('html').insert(0, parsed.data.html || '');
+      }
+      if (parsed.data.css !== undefined) {
+        tempDoc.getText('css').insert(0, parsed.data.css || '');
+      }
+      if (parsed.data.js !== undefined) {
+        tempDoc.getText('js').insert(0, parsed.data.js || '');
+      }
+      const state = Y.encodeStateAsUpdate(tempDoc);
+      await redis.set(`yjs:${docName}`, Buffer.from(state));
+      tempDoc.destroy();
+    }
+  }
+
   res.json(snippet);
 });
 

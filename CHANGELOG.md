@@ -16,12 +16,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Refactored `Editor.tsx` to instantiate `Y.Doc` and `WebsocketProvider` per snippet instead of broadcasting the entire codebase on keystrokes.
 - Updated `server/src/index.ts` to spawn an underlying `y-websocket` server that tracks active `Y.Doc` references in memory.
 - Overhauled real-time storage mechanism: Instead of comparing and saving plain text with `UpdatedAt` timestamps, the server now stores encoded binary Yjs state objects in Redis.
+- Updated Live Preview rendering to use `srcDoc` instead of Blob URLs to fix strict `Content-Security-Policy` and same-origin restrictions.
+- Overhauled the autosave UX: Replaced the intrusive notification toast banner on autosaves with a subtle, animated pulse-ring ("auto-saving...") indicator positioned next to the Back button.
 
 ### Fixed
 - Fixed critical, silent data loss during concurrent edits by replacing the "Last-Writer-Wins" (LWW) architecture with mathematically lossless CRDT merges.
 - Fixed a server startup crash during deployment caused by an export resolution issue with `y-websocket/bin/utils` — mitigated by downgrading `y-websocket` to `^1.5.0` and installing `yjs` directly.
 - Fixed a severe bug where documents failed to persist to MongoDB: autosaving in `persistDoc` now decodes the Yjs binary state back to plain text and successfully invokes `Snippet.findByIdAndUpdate`.
 - Fixed a silent failure during document seeding: stripped out the string prefix (`snippet-`) inside `index.ts` to stop invalid object ID errors when searching MongoDB.
+- Fixed a severe bug where switching language tabs caused code to disappear and overwrite with empty strings. Implemented a CSS visibility toggle (`display: block / none`) to preserve component state instead of conditionally unmounting the Monaco editors.
+- Fixed a Monaco Editor painting bug by adding `automaticLayout: true` so the editor correctly calculates its dimensions when its container `display` property is dynamically restored.
+- Fixed a silent race-condition upon refresh where incoming WebSocket code arrived before the Monaco Editor fully mounted, leaving the editor blank. Added an `isEditorReady` synchronization state to ensure `Y.Text` explicitly binds only after the editor fires `onMount`.
 
 ### Implementation Details & Notes
 - **LWW vs CRDT Migration Context**: Our initial sync strategy broadcast the entire codebase on each keystroke and validated timestamps (`Date.now()`). This resulted in immediate race conditions, jitter failure, and concurrent edit losses. `Yjs` handles the synchronization vector internally, completely resolving ordering and concurrency issues.

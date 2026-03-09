@@ -4,7 +4,7 @@ import { MonacoBinding } from 'y-monaco';
 import * as Y from 'yjs';
 
 interface Props {
-  language: 'html'|'css'|'javascript';
+  language: 'html' | 'css' | 'javascript';
   yText: Y.Text | null;
   awareness: any;
   readOnly?: boolean;
@@ -15,6 +15,7 @@ interface Props {
 export default function CodeEditor({ language, yText, awareness, readOnly, onCursor, onChange }: Props) {
   const monacoRef = useRef<any>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
+  const [isEditorReady, setIsEditorReady] = useState(false);
   const [theme, setTheme] = useState<'vs' | 'vs-dark'>(() => (document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark'));
 
   // Observe theme changes
@@ -49,7 +50,7 @@ export default function CodeEditor({ language, yText, awareness, readOnly, onCur
       onCursor({ lineNumber: p.lineNumber, column: p.column });
     });
     return () => sub?.dispose?.();
-  }, [onCursor]);
+  }, [onCursor, isEditorReady]);
 
   // Bind Yjs text to Monaco editor
   useEffect(() => {
@@ -75,15 +76,18 @@ export default function CodeEditor({ language, yText, awareness, readOnly, onCur
       binding.destroy();
       bindingRef.current = null;
     };
-  }, [yText, awareness]);
+  }, [yText, awareness, isEditorReady]);
 
   return (
     <div style={{ height: '100%' }}>
       <Editor
         theme={theme}
         defaultLanguage={language}
-        options={{ readOnly, fontSize: 14, minimap: { enabled: false } }}
-        onMount={(editor, monaco) => { monacoRef.current = { editor, monaco }; }}
+        options={{ readOnly, fontSize: 14, minimap: { enabled: false }, automaticLayout: true }}
+        onMount={(editor, monaco) => {
+          monacoRef.current = { editor, monaco };
+          setIsEditorReady(true);
+        }}
       />
     </div>
   );
