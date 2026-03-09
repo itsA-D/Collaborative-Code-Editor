@@ -45,3 +45,5 @@ CHANGELOG_crdt.md
 LWW.MD
 CRDT.MD
 info.me
+
+.gitignore
