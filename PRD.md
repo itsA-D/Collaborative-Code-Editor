@@ -165,11 +165,11 @@ In scope for current release:
 - snippet CRUD/fork/share
 - live preview sandbox
 - presence/cursor/typing indicators
+- Yjs CRDT-based conflict-free collaborative editing
 - Redis-backed realtime state + MongoDB persistence
 
 Out of scope for current release:
 - collaborative permission roles (viewer/editor granularity)
-- CRDT/OT conflict-free editing
 - multi-language runtime execution (Python/Java/etc.)
 - comments/threads/version history
 - organization/team workspaces
@@ -178,8 +178,8 @@ Out of scope for current release:
 
 ## 11. Risks and Mitigations
 
-Risk: Concurrent edit loss under LWW timestamp strategy.  
-Mitigation: migrate to CRDT-based synchronization.
+Risk: WebSocket disconnects causing split-brain.
+Mitigation: Yjs CRDT state vector sync automatically reconciles upon reconnection.
 
 Risk: Misconfigured CORS in production.  
 Mitigation: explicit origin allowlist and environment hardening.
@@ -198,7 +198,6 @@ Phase 1 (Current):
 - baseline collaborative editor with auth, snippets, preview, presence
 
 Phase 2:
-- robust conflict resolution (CRDT)
 - private snippet sharing controls
 - activity/history timeline
 

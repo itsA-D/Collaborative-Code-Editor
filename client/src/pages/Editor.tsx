@@ -42,8 +42,13 @@ export default function EditorPage() {
     if (!snippetId || !token) return;
 
     const ydoc = new Y.Doc();
-    const wsUrl = (import.meta as any).env.VITE_YJS_URL || 'ws://localhost:1234';
-    const wsProvider = new WebsocketProvider(wsUrl, `snippet-${snippetId}`, ydoc);
+    let wsUrl = (import.meta as any).env.VITE_YJS_URL;
+    if (!wsUrl) {
+      wsUrl = window.location.protocol === 'https:'
+        ? `wss://${window.location.hostname}:1234`
+        : 'ws://localhost:1234';
+    }
+    const wsProvider = new WebsocketProvider(wsUrl, `snippet-${snippetId}?token=${token}`, ydoc);
 
     ydocRef.current = ydoc;
     providerRef.current = wsProvider;

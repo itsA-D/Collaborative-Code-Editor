@@ -202,10 +202,8 @@ Current controls:
 - Sandboxed iframe live preview (`sandbox="allow-scripts"` + CSP in generated doc)
 
 Known risks and gaps:
-- Current CORS policy in server allows all origins (`origin: true`)
-- Environment defaults include sensitive production-like fallback strings in code
-- LWW timestamp conflict model can drop concurrent edits under clock skew
 - Socket room-level authorization allows joining by snippet ID if token is valid
+- WebSocket cluster scaling relies on sticky sessions for Yjs pub/sub beyond Redis presence maps
 
 ---
 
@@ -234,9 +232,9 @@ Reason: Fast access for active sessions and separation from durable store.
 Decision: Persist canonical snippets in MongoDB.
 Reason: Flexible document model for snippet content + metadata.
 
-Decision: Use LWW with per-language timestamps.
-Reason: Simplicity and implementation speed.
-Tradeoff: Can lose changes under true concurrent edits.
+Decision: Use Yjs CRDT for concurrency control.
+Reason: Prevents data loss under concurrent edits and provides robust offline reconciliation.
+Tradeoff: Increases complexity of state synchronization and payload sizes compared to LWW.
 
 Decision: Client-side live preview in sandboxed iframe.
 Reason: Avoid server-side code execution risk and reduce backend compute cost.
@@ -245,9 +243,8 @@ Reason: Avoid server-side code execution risk and reduce backend compute cost.
 
 ## 10. Future Improvements
 
-- Replace LWW with CRDT/OT for conflict-free collaborative edits
 - Add role-aware access control for private/shared snippets
-- Harden CORS to explicit allowlist and remove permissive defaults
-- Move secrets entirely to environment and remove unsafe fallbacks
+- Investigate distributed Yjs provider strategies for massive multi-node deployments
+- Move secrets entirely to environment (already removed unsafe fallbacks)
 - Add audit logging and structured observability for socket events
 - Add e2e tests for collaboration race conditions and autosave behavior

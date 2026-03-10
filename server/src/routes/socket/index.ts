@@ -4,7 +4,7 @@ import { redis } from '../../db/redis';
 import { Snippet } from '../../models/Snippet';
 
 const COLORS = [
-  '#ef4444','#f59e0b','#10b981','#3b82f6','#926fe4ff','#ec4899','#14b8a6','#84cc16'
+  '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#926fe4ff', '#ec4899', '#14b8a6', '#84cc16'
 ];
 
 function colorFor(id: string) {
@@ -15,7 +15,7 @@ function colorFor(id: string) {
 function usersKey(snippetId: string) { return `snippet:${snippetId}:users`; }
 function room(snippetId: string) { return `snippet:${snippetId}`; }
 
-type Lang = 'html'|'css'|'js';
+type Lang = 'html' | 'css' | 'js';
 
 const perSnippetTimers: Map<string, { autosave?: NodeJS.Timeout }> = new Map();
 // Track which snippets a socket has joined for disconnect cleanup
@@ -55,6 +55,9 @@ export function initSocket(io: Server) {
     socket.on('join-snippet', async ({ snippetId }: { snippetId: string }) => {
       const snip = await Snippet.findById(snippetId);
       if (!snip) return socket.emit('error', { message: 'Snippet not found' });
+      if (snip.isPublic === false && snip.owner.toString() !== user.id) {
+        return socket.emit('error', { message: 'Forbidden: Snippet access denied' });
+      }
 
       const c = colorFor(user.id);
       await addUser(snippetId, { id: user.id, name: user.name, color: c });
@@ -94,11 +97,11 @@ export function initSocket(io: Server) {
     async function leave(snippetId: string) {
       await removeUser(snippetId, user.id);
       socket.leave(room(snippetId));
-      io.to(room(snippetId)).emit('active-users', await getUsers(snippetId));
+      const remainingUsers = await getUsers(snippetId);
+      io.to(room(snippetId)).emit('active-users', remainingUsers);
       socket.to(room(snippetId)).emit('user-left', { id: user.id });
       // if room empty, clear autosave
-      const r = io.sockets.adapter.rooms.get(room(snippetId));
-      if (!r || r.size === 0) {
+      if (remainingUsers.length === 0) {
         const timers = perSnippetTimers.get(snippetId);
         if (timers?.autosave) clearInterval(timers.autosave);
         perSnippetTimers.delete(snippetId);
@@ -121,10 +124,10 @@ export function initSocket(io: Server) {
       if (set) {
         for (const sid of Array.from(set)) {
           await removeUser(sid, user.id);
-          io.to(room(sid)).emit('active-users', await getUsers(sid));
+          const remainingUsers = await getUsers(sid);
+          io.to(room(sid)).emit('active-users', remainingUsers);
           socket.to(room(sid)).emit('user-left', { id: user.id });
-          const r = io.sockets.adapter.rooms.get(room(sid));
-          if (!r || r.size === 0) {
+          if (remainingUsers.length === 0) {
             const timers = perSnippetTimers.get(sid);
             if (timers?.autosave) clearInterval(timers.autosave);
             perSnippetTimers.delete(sid);

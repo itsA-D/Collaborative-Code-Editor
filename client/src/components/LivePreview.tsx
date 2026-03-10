@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 
 function buildSrcDoc(html: string, css: string, js: string) {
-  // Relaxing CSP slightly to allow the preview to run its own scripts and styles inline
-  const csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob: http: https:; font-src data:; connect-src 'none'; frame-src 'none'";
-  return `<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"${csp}\"><style>${css}</style></head><body>${html}<script>(function(){try{${js}\n}catch(e){console.error(e)}})()<\/script></body></html>`;
+  // Generate a random nonce for the inline script to avoid using 'unsafe-inline' in CSP
+  const nonce = btoa(String(Math.random())).substring(0, 16);
+  const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data: blob: http: https:; font-src data:; connect-src 'none'; frame-src 'none'`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${css}</style></head><body>${html}<script nonce="${nonce}">(function(){try{${js}\n}catch(e){console.error(e)}})()<\/script></body></html>`;
 }
 
 export default function LivePreview({ html, css, js }: { html: string; css: string; js: string }) {

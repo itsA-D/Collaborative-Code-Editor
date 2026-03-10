@@ -8,10 +8,12 @@ import { WebSocketServer } from 'ws';
 import { Server } from 'socket.io';
 import { env } from './config/env';
 import { connectMongo } from './db/mongo';
-import { redis } from './db/redis';
+import { redis, pubClient, subClient } from './db/redis';
+import { createAdapter } from '@socket.io/redis-adapter';
 import authRoutes from './routes/auth';
 import snippetRoutes from './routes/snippets';
 import { apiLimiter } from './middleware/rateLimit';
+import { verifyJwt } from './utils/jwt';
 import { initSocket } from './routes/socket';
 import { setupWSConnection, getYDoc } from 'y-websocket/bin/utils';
 import * as Y from 'yjs';
@@ -29,9 +31,25 @@ async function bootstrap() {
 
   const app = express();
   app.set('trust proxy', 1); // Required for Render/Vercel proxies
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "wss:", "ws:", "http:", "https:"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: [],
+        reportUri: '/api/csp-report',
+      },
+      reportOnly: true, // Report-only for staged production rollout
+    },
+    crossOriginEmbedderPolicy: false,
+  }));
   app.use(cors({
-    origin: true, // Allow all origins strictly for debugging
+    origin: typeof env.CORS_ORIGIN === 'string' ? env.CORS_ORIGIN.split(',') : env.CORS_ORIGIN,
     credentials: true,
   }));
   app.use(express.json({ limit: '1mb' }));
@@ -50,18 +68,38 @@ async function bootstrap() {
   });
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
+  app.post('/api/csp-report', express.json({ type: ['application/json', 'application/csp-report'] }), (req, res) => {
+    console.warn('CSP Violation:', req.body);
+    res.status(204).end();
+  });
   app.use('/api/auth', authRoutes);
   app.use('/api/snippets', snippetRoutes);
 
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: {
-      origin: true,
+      origin: typeof env.CORS_ORIGIN === 'string' ? env.CORS_ORIGIN.split(',') : env.CORS_ORIGIN,
       methods: ['GET', 'POST'],
       credentials: true,
     }
   });
+
+  io.adapter(createAdapter(pubClient, subClient));
   initSocket(io);
+
+  // Global subscriber for Yjs updates from other nodes
+  subClient.psubscribe('yjs-update:*');
+  subClient.on('pmessage', (pattern, channel, message) => {
+    if (pattern === 'yjs-update:*') {
+      const docName = channel.replace('yjs-update:', '');
+      const doc = ydocs.get(docName);
+      if (doc) {
+        const update = Buffer.from(message, 'base64');
+        // applyUpdate using 'redis' origin to prevent rebounding
+        Y.applyUpdate(doc, update, 'redis');
+      }
+    }
+  });
 
   // Yjs WebSocket server for CRDT collaboration
   const yjsPort = env.YJS_PORT || 1234;
@@ -70,7 +108,7 @@ async function bootstrap() {
   const PERSIST_INTERVAL = 30000; // 30 seconds
 
   // Update exported ydocUpdater when bootstrap runs
-  ydocUpdater.update = function(docName: string, updates: { html?: string; css?: string; js?: string }) {
+  ydocUpdater.update = function (docName: string, updates: { html?: string; css?: string; js?: string }) {
     const doc = ydocs.get(docName);
     if (!doc) return false;
 
@@ -134,7 +172,29 @@ async function bootstrap() {
   yjsWss.on('connection', async (conn, req) => {
     const url = req.url || '';
     const docName = url.split('/').pop()?.split('?')[0] || 'default';
-    if (!docName) {
+    if (!docName || docName === 'default') {
+      conn.close();
+      return;
+    }
+
+    try {
+      // Basic jwt auth & snippet authorization for WS connection
+      const urlParams = new URLSearchParams(req.url?.split('?')[1] || '');
+      const token = urlParams.get('token');
+      if (!token) throw new Error('Unauthorized');
+
+      const user = verifyJwt(token) as any; // Throws if invalid
+
+      if (docName.startsWith('snippet-')) {
+        const snippetId = docName.replace('snippet-', '');
+        const snip = await Snippet.findById(snippetId);
+        if (!snip) throw new Error('Snippet not found');
+        if (snip.isPublic === false && snip.owner.toString() !== user.id) {
+          throw new Error('Forbidden: Snippet access denied');
+        }
+      }
+    } catch (err) {
+      console.error(`Yjs Websocket Auth Failed for ${docName}:`, (err as any).message);
       conn.close();
       return;
     }
@@ -167,6 +227,13 @@ async function bootstrap() {
       } catch (err) {
         console.error(`Failed to load Yjs state for ${docName}:`, err);
       }
+
+      // Broadcast local updates to other nodes
+      doc.on('update', (update, origin) => {
+        if (origin !== 'redis') {
+          pubClient.publish(`yjs-update:${docName}`, Buffer.from(update).toString('base64'));
+        }
+      });
     }
 
     // Track doc reference while client connected
