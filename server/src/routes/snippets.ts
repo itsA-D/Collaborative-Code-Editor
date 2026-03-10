@@ -3,13 +3,25 @@ import { Types } from 'mongoose';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { Snippet } from '../models/Snippet';
 import { snippetCreateSchema, snippetUpdateSchema } from '../utils/validators';
+import { ydocUpdater, ydocs } from '../index';
+import { redis } from '../db/redis';
+import * as Y from 'yjs';
 
 const router = Router();
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const parsed = snippetCreateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
-  const { title, html, css, js, isPublic } = parsed.data;
+  let { title, html, css, js, isPublic } = parsed.data;
+
+  // Auto-number duplicate titles
+  const baseTitle = title;
+  let counter = 1;
+  while (await Snippet.findOne({ owner: new Types.ObjectId(req.user!.id), title })) {
+    title = `${baseTitle} ${counter}`;
+    counter++;
+  }
+
   const snippet = await Snippet.create({
     title,
     owner: new Types.ObjectId(req.user!.id),
@@ -39,6 +51,37 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   if (snippet.owner.toString() !== req.user!.id) return res.status(403).json({ message: 'Forbidden' });
   Object.assign(snippet, parsed.data);
   await snippet.save();
+
+  // Update Redis with the new code content for Yjs sync
+  if (parsed.data.html !== undefined || parsed.data.css !== undefined || parsed.data.js !== undefined) {
+    const docName = `snippet-${id}`;
+    const doc = ydocs.get(docName);
+
+    if (doc) {
+      // If Yjs doc exists in memory, use it and persist to Redis
+      ydocUpdater.update(docName, {
+        html: parsed.data.html,
+        css: parsed.data.css,
+        js: parsed.data.js,
+      });
+    } else {
+      // No active Yjs connection - create a temp doc and save to Redis directly
+      const tempDoc = new Y.Doc();
+      if (parsed.data.html !== undefined) {
+        tempDoc.getText('html').insert(0, parsed.data.html || '');
+      }
+      if (parsed.data.css !== undefined) {
+        tempDoc.getText('css').insert(0, parsed.data.css || '');
+      }
+      if (parsed.data.js !== undefined) {
+        tempDoc.getText('js').insert(0, parsed.data.js || '');
+      }
+      const state = Y.encodeStateAsUpdate(tempDoc);
+      await redis.set(`yjs:${docName}`, Buffer.from(state));
+      tempDoc.destroy();
+    }
+  }
+
   res.json(snippet);
 });
 
@@ -73,7 +116,14 @@ router.get('/', async (req, res) => {
   const limit = parseInt((req.query.limit as string) || '10', 10);
   const skip = (page - 1) * limit;
   const filter: any = { isPublic: true };
-  if (req.query.owner) filter.owner = new Types.ObjectId(req.query.owner as string);
+  if (req.query.owner) {
+    // Validate ObjectId format before conversion
+    if (Types.ObjectId.isValid(req.query.owner as string)) {
+      filter.owner = new Types.ObjectId(req.query.owner as string);
+    } else {
+      return res.status(400).json({ message: 'Invalid owner ID format' });
+    }
+  }
 
   const [items, total] = await Promise.all([
     Snippet.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit),
