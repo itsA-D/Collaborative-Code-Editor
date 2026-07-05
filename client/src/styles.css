@@ -969,3 +969,14 @@ html[data-theme="light"] .autosave-indicator {
   background: linear-gradient(135deg, rgba(163, 5, 255, 0.08), rgba(236, 72, 153, 0.05));
   border-color: rgba(163, 5, 255, 0.2);
 }
+
+/* Collaborative Utilities */
+.pulse-dot {
+  animation: pulse-dot-anim 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-dot-anim {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.6; }
+}

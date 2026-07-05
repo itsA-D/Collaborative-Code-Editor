@@ -80,20 +80,6 @@ export function initSocket(io: Server) {
       socketSnippets.set(socket.id, set);
     });
 
-    // Cursor updates - still useful for non-editor cursors if needed
-    socket.on('cursor-move', ({ snippetId, language, position }: { snippetId: string; language: Lang; position: any }) => {
-      socket.to(room(snippetId)).emit('cursor-updated', { userId: user.id, name: user.name, color: colorFor(user.id), position, language });
-    });
-
-    socket.on('typing', ({ snippetId, language }: { snippetId: string; language: Lang }) => {
-      const key = `${user.id}:${snippetId}:${language}`;
-      const now = Date.now();
-      const last = typingThrottle.get(key) || 0;
-      if (now - last < 700) return; // throttle
-      typingThrottle.set(key, now);
-      socket.to(room(snippetId)).emit('user-typing', { userId: user.id, name: user.name, language, ts: now });
-    });
-
     async function leave(snippetId: string) {
       await removeUser(snippetId, user.id);
       socket.leave(room(snippetId));
