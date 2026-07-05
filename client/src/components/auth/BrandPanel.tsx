@@ -94,70 +94,52 @@ export const BrandPanel: React.FC = () => {
   }, []);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#080808]">
-      <canvas ref={canvasRef} className="absolute inset-0" />
-      
-      <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/50" />
-      
-      {/* Diagonal lines extending to corners */}
+    <div className="relative h-full w-full bg-black">
+      {/* Diagonal lines extending from center to corners */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none">
-        <line x1="50%" y1="50%" x2="0%" y2="0%" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-        <line x1="50%" y1="50%" x2="100%" y2="0%" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-        <line x1="50%" y1="50%" x2="0%" y2="100%" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-        <line x1="50%" y1="50%" x2="100%" y2="100%" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+        <line x1="50%" y1="50%" x2="0%" y2="0%" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+        <line x1="50%" y1="50%" x2="100%" y2="0%" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+        <line x1="50%" y1="50%" x2="0%" y2="100%" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+        <line x1="50%" y1="50%" x2="100%" y2="100%" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
       </svg>
       
-      <div className="absolute inset-0 flex flex-col justify-between p-8">
-        <div className="flex items-center gap-3">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6 }}
-            className="flex items-center gap-2"
-          >
-            <span className="text-white font-semibold text-xl tracking-tight">CodeSync</span>
-          </motion.div>
+      <div className="absolute inset-0 flex flex-col justify-between p-12">
+        {/* Logo at top left */}
+        <div className="flex items-center">
+          <span className="text-white font-semibold text-xl tracking-tight">CodeSync</span>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="relative flex items-center justify-center"
-        >
-          <div className="w-48 h-48">
+        {/* Star graphic in center */}
+        <div className="flex items-center justify-center">
+          <div className="w-40 h-40">
             <svg viewBox="0 0 100 100" className="w-full h-full">
               {/* Star-like asterisk graphic */}
-              <g stroke="white" strokeWidth="3" strokeLinecap="round">
+              <g stroke="white" strokeWidth="4" strokeLinecap="round">
                 {/* Center point */}
-                <circle cx="50" cy="50" r="4" fill="white" />
-                {/* Radiating lines */}
-                <line x1="50" y1="50" x2="50" y2="15" />
-                <line x1="50" y1="50" x2="50" y2="85" />
-                <line x1="50" y1="50" x2="15" y2="50" />
-                <line x1="50" y1="50" x2="85" y2="50" />
-                <line x1="50" y1="50" x2="25" y2="25" />
-                <line x1="50" y1="50" x2="75" y2="75" />
-                <line x1="50" y1="50" x2="75" y2="25" />
-                <line x1="50" y1="50" x2="25" y2="75" />
-                {/* Additional shorter lines for star effect */}
-                <line x1="50" y1="50" x2="50" y2="25" strokeWidth="2" opacity="0.6" />
-                <line x1="50" y1="50" x2="50" y2="75" strokeWidth="2" opacity="0.6" />
-                <line x1="50" y1="50" x2="25" y2="50" strokeWidth="2" opacity="0.6" />
-                <line x1="50" y1="50" x2="75" y2="50" strokeWidth="2" opacity="0.6" />
+                <circle cx="50" cy="50" r="5" fill="white" />
+                {/* Main radiating lines */}
+                <line x1="50" y1="50" x2="50" y2="10" />
+                <line x1="50" y1="50" x2="50" y2="90" />
+                <line x1="50" y1="50" x2="10" y2="50" />
+                <line x1="50" y1="50" x2="90" y2="50" />
+                <line x1="50" y1="50" x2="22" y2="22" />
+                <line x1="50" y1="50" x2="78" y2="78" />
+                <line x1="50" y1="50" x2="78" y2="22" />
+                <line x1="50" y1="50" x2="22" y2="78" />
+                {/* Additional shorter lines */}
+                <line x1="50" y1="50" x2="50" y2="20" strokeWidth="2.5" opacity="0.7" />
+                <line x1="50" y1="50" x2="50" y2="80" strokeWidth="2.5" opacity="0.7" />
+                <line x1="50" y1="50" x2="20" y2="50" strokeWidth="2.5" opacity="0.7" />
+                <line x1="50" y1="50" x2="80" y2="50" strokeWidth="2.5" opacity="0.7" />
               </g>
             </svg>
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-          className="space-y-1"
-        >
+        {/* Copyright at bottom left */}
+        <div className="flex items-start">
           <p className="text-white/40 text-xs">© CodeSync 2024. All rights reserved.</p>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
