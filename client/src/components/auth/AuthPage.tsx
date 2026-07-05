@@ -23,15 +23,15 @@ export const AuthPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#080808] flex items-center justify-center p-4 md:p-8 lg:p-12">
-      <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+    <div className="min-h-screen bg-[#080808] flex items-center justify-center">
+      <div className="w-full h-screen grid grid-cols-1 lg:grid-cols-2">
         {/* Left Panel - Brand */}
-        <div className="lg:col-span-5 h-[400px] lg:h-[600px] rounded-[32px] overflow-hidden relative">
+        <div className="hidden lg:block h-full relative">
           <BrandPanel />
         </div>
 
         {/* Right Panel - Auth Form */}
-        <div className="lg:col-span-7 flex items-center justify-center">
+        <div className="flex items-center justify-center p-8 lg:p-12">
           <AuthCard>
             <AnimatePresence mode="wait">
               {isLogin ? (

@@ -99,6 +99,14 @@ export const BrandPanel: React.FC = () => {
       
       <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/50" />
       
+      {/* Diagonal lines extending to corners */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none">
+        <line x1="50%" y1="50%" x2="0%" y2="0%" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+        <line x1="50%" y1="50%" x2="100%" y2="0%" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+        <line x1="50%" y1="50%" x2="0%" y2="100%" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+        <line x1="50%" y1="50%" x2="100%" y2="100%" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+      </svg>
+      
       <div className="absolute inset-0 flex flex-col justify-between p-8">
         <div className="flex items-center gap-3">
           <motion.div
@@ -107,62 +115,37 @@ export const BrandPanel: React.FC = () => {
             transition={{ duration: 0.6 }}
             className="flex items-center gap-2"
           >
-            <div className="relative">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-                className="w-10 h-10 border-2 border-white/20 rounded-lg"
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-white font-bold text-lg">&lt;/&gt;</span>
-              </div>
-            </div>
             <span className="text-white font-semibold text-xl tracking-tight">CodeSync</span>
           </motion.div>
         </div>
 
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="relative"
+          className="relative flex items-center justify-center"
         >
-          <div className="w-32 h-32 mx-auto mb-6">
+          <div className="w-48 h-48">
             <svg viewBox="0 0 100 100" className="w-full h-full">
-              <defs>
-                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="rgba(255,255,255,0.3)" />
-                  <stop offset="100%" stopColor="rgba(255,255,255,0.1)" />
-                </linearGradient>
-              </defs>
-              <motion.g
-                animate={{ rotate: 360 }}
-                transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
-              >
-                <polygon
-                  points="50,10 90,30 90,70 50,90 10,70 10,30"
-                  fill="none"
-                  stroke="url(#gradient)"
-                  strokeWidth="1"
-                />
-                <polygon
-                  points="50,20 80,35 80,65 50,80 20,65 20,35"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.2)"
-                  strokeWidth="0.5"
-                />
-              </motion.g>
-              <circle cx="50" cy="50" r="8" fill="rgba(255,255,255,0.3)" />
-              <motion.circle
-                cx="50"
-                cy="50"
-                r="15"
-                fill="none"
-                stroke="rgba(255,255,255,0.2)"
-                strokeWidth="0.5"
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 3, repeat: Infinity }}
-              />
+              {/* Star-like asterisk graphic */}
+              <g stroke="white" strokeWidth="3" strokeLinecap="round">
+                {/* Center point */}
+                <circle cx="50" cy="50" r="4" fill="white" />
+                {/* Radiating lines */}
+                <line x1="50" y1="50" x2="50" y2="15" />
+                <line x1="50" y1="50" x2="50" y2="85" />
+                <line x1="50" y1="50" x2="15" y2="50" />
+                <line x1="50" y1="50" x2="85" y2="50" />
+                <line x1="50" y1="50" x2="25" y2="25" />
+                <line x1="50" y1="50" x2="75" y2="75" />
+                <line x1="50" y1="50" x2="75" y2="25" />
+                <line x1="50" y1="50" x2="25" y2="75" />
+                {/* Additional shorter lines for star effect */}
+                <line x1="50" y1="50" x2="50" y2="25" strokeWidth="2" opacity="0.6" />
+                <line x1="50" y1="50" x2="50" y2="75" strokeWidth="2" opacity="0.6" />
+                <line x1="50" y1="50" x2="25" y2="50" strokeWidth="2" opacity="0.6" />
+                <line x1="50" y1="50" x2="75" y2="50" strokeWidth="2" opacity="0.6" />
+              </g>
             </svg>
           </div>
         </motion.div>
@@ -171,12 +154,9 @@ export const BrandPanel: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.4 }}
-          className="space-y-2"
+          className="space-y-1"
         >
-          <p className="text-white/60 text-sm">Built for developers.</p>
-          <p className="text-white/40 text-xs">Real-time collaborative coding.</p>
-          <p className="text-white/30 text-xs">Powered by CRDT.</p>
-          <p className="text-white/20 text-xs mt-4">v1.0.0</p>
+          <p className="text-white/40 text-xs">© CodeSync 2024. All rights reserved.</p>
         </motion.div>
       </div>
     </div>

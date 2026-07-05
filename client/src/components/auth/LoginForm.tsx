@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Mail, Lock } from 'lucide-react';
+import { Mail, Lock, Loader2 } from 'lucide-react';
 import { InputField } from './InputField';
 import { PasswordField } from './PasswordField';
 import { Button } from './Button';
@@ -62,94 +62,90 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ duration: 0.3 }}
-      className="space-y-6"
+      className="h-full flex flex-col"
     >
-      <div className="space-y-2">
-        <h1 className="text-3xl font-semibold text-white tracking-tight">Welcome Back</h1>
-        <p className="text-white/50 text-sm">Continue building together.</p>
+      {/* Create account link at top right */}
+      <div className="flex justify-end mb-8">
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={onSwitchToRegister}
+          className="text-sm text-white/60 hover:text-white transition-colors"
+        >
+          Create an account
+        </motion.button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <InputField
-          label="Email"
-          type="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          error={errors.email}
-          icon={<Mail size={18} />}
-          autoComplete="email"
-          required
-        />
+      {/* Login heading */}
+      <div className="mb-8">
+        <h1 className="text-4xl font-light text-white tracking-tight">Login</h1>
+      </div>
 
-        <PasswordField
-          label="Password"
-          placeholder="••••••••"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          error={errors.password}
-          autoComplete="current-password"
-          required
-        />
+      <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between">
+        <div className="space-y-6">
+          <InputField
+            label="Email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            error={errors.email}
+            icon={<Mail size={18} />}
+            autoComplete="email"
+            required
+          />
 
-        <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="w-4 h-4 rounded border-white/20 bg-white/5 text-white focus:ring-white/20 focus:ring-offset-0"
-            />
-            <span className="text-sm text-white/60">Remember me</span>
-          </label>
+          <PasswordField
+            label="Password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            error={errors.password}
+            autoComplete="current-password"
+            required
+          />
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            type="button"
-            className="text-sm text-white/60 hover:text-white transition-colors"
-          >
-            Forgot password?
-          </motion.button>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-white/20 bg-white/5 text-white focus:ring-white/20 focus:ring-offset-0"
+              />
+              <span className="text-sm text-white/60">Remember me</span>
+            </label>
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              type="button"
+              className="text-sm text-white/60 hover:text-white transition-colors"
+            >
+              Forgot?
+            </motion.button>
+          </div>
         </div>
 
-        <SessionDurationSelector
-          value={sessionDuration}
-          onChange={setSessionDuration}
-        />
-
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          loading={loading}
-          className="w-full"
-        >
-          Sign In
-        </Button>
-      </form>
-
-      <SocialLoginButtons />
-
-      <div className="text-center pt-4">
-        <p className="text-white/50 text-sm">
-          Don't have an account?{' '}
+        {/* Circular sign-in button at bottom right */}
+        <div className="flex justify-end mt-8">
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={onSwitchToRegister}
-            className="text-white font-medium hover:underline relative inline-block"
+            type="submit"
+            disabled={loading}
+            className="w-20 h-20 rounded-full bg-white text-black font-medium text-sm flex items-center justify-center hover:bg-white/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Create Account
-            <motion.div
-              className="absolute bottom-0 left-0 h-px bg-white"
-              initial={{ width: 0 }}
-              whileHover={{ width: '100%' }}
-              transition={{ duration: 0.2 }}
-            />
+            {loading ? (
+              <span className="flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin" />
+              </span>
+            ) : (
+              <span className="text-xs font-semibold">SIGN IN</span>
+            )}
           </motion.button>
-        </p>
-      </div>
+        </div>
+      </form>
     </motion.div>
   );
 };
