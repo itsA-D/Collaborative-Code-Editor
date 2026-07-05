@@ -3,11 +3,20 @@ import { Types } from 'mongoose';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { Snippet } from '../models/Snippet';
 import { snippetCreateSchema, snippetUpdateSchema } from '../utils/validators';
-import { ydocUpdater, ydocs } from '../index';
+import { ydocUpdater, ydocs, getOrLoadDoc } from '../index';
 import { redis } from '../db/redis';
 import * as Y from 'yjs';
 
 const router = Router();
+
+// Helper function to compare Uint8Arrays
+function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const parsed = snippetCreateSchema.safeParse(req.body);
@@ -49,36 +58,54 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   const snippet = await Snippet.findById(id);
   if (!snippet) return res.status(404).json({ message: 'Snippet not found' });
   if (snippet.owner.toString() !== req.user!.id) return res.status(403).json({ message: 'Forbidden' });
+  
+  // Optimistic concurrency: capture Yjs state before update
+  const docName = `snippet-${id}`;
+  const doc = await getOrLoadDoc(docName);
+  let prevStateVector: Uint8Array | null = null;
+  let prevContentHash: string | null = null;
+  
+  if (doc && (parsed.data.html !== undefined || parsed.data.css !== undefined || parsed.data.js !== undefined)) {
+    // Capture state vector for optimistic concurrency check
+    prevStateVector = Y.encodeStateVector(doc);
+    // Capture content hash for additional safety
+    const currentHtml = doc.getText('html').toString();
+    const currentCss = doc.getText('css').toString();
+    const currentJs = doc.getText('js').toString();
+    prevContentHash = `${currentHtml.length}:${currentCss.length}:${currentJs.length}`;
+  }
+  
   Object.assign(snippet, parsed.data);
   await snippet.save();
 
   // Update Redis with the new code content for Yjs sync
   if (parsed.data.html !== undefined || parsed.data.css !== undefined || parsed.data.js !== undefined) {
-    const docName = `snippet-${id}`;
-    const doc = ydocs.get(docName);
-
     if (doc) {
-      // If Yjs doc exists in memory, use it and persist to Redis
-      ydocUpdater.update(docName, {
+      // Check for concurrent modifications using state vector
+      const currentStateVector = Y.encodeStateVector(doc);
+      const stateChanged = !arraysEqual(prevStateVector!, currentStateVector);
+      
+      // Additional content check
+      const currentHtml = doc.getText('html').toString();
+      const currentCss = doc.getText('css').toString();
+      const currentJs = doc.getText('js').toString();
+      const currentContentHash = `${currentHtml.length}:${currentCss.length}:${currentJs.length}`;
+      const contentChanged = prevContentHash !== currentContentHash;
+      
+      if (stateChanged || contentChanged) {
+        // Document was modified by another client concurrently
+        console.warn(`Concurrent modification detected for ${docName}, rejecting REST update`);
+        return res.status(409).json({ 
+          message: 'Conflict: Document was modified by another user. Please refresh and try again.',
+          conflict: true
+        });
+      }
+      
+      await ydocUpdater.update(docName, {
         html: parsed.data.html,
         css: parsed.data.css,
         js: parsed.data.js,
       });
-    } else {
-      // No active Yjs connection - create a temp doc and save to Redis directly
-      const tempDoc = new Y.Doc();
-      if (parsed.data.html !== undefined) {
-        tempDoc.getText('html').insert(0, parsed.data.html || '');
-      }
-      if (parsed.data.css !== undefined) {
-        tempDoc.getText('css').insert(0, parsed.data.css || '');
-      }
-      if (parsed.data.js !== undefined) {
-        tempDoc.getText('js').insert(0, parsed.data.js || '');
-      }
-      const state = Y.encodeStateAsUpdate(tempDoc);
-      await redis.set(`yjs:${docName}`, Buffer.from(state));
-      tempDoc.destroy();
     }
   }
 
