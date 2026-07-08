@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -9,6 +9,8 @@ import { useAuth } from './state/AuthContext';
 export default function App() {
   const { user, logout } = useAuth();
   const [isLight, setIsLight] = useState(false);
+  const location = useLocation();
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register';
 
   useEffect(() => {
     const stored = localStorage.getItem('theme') || 'dark';
@@ -34,22 +36,24 @@ export default function App() {
   };
   return (
     <div className="app">
-      <header className="topbar">
-        <Link to="/explore" className="brand">Collab Editor</Link>
-        <div className="spacer" />
-        <button className="btn" onClick={toggleTheme}>{isLight ? 'Dark' : 'Light'}</button>
-        {user ? (
-          <>
-            <span className="user">{user.name}</span>
-            <button className="btn" onClick={logout}>Logout</button>
-          </>
-        ) : (
-          <>
-            <Link className="btn" to="/login">Login</Link>
-            <Link className="btn" to="/register">Register</Link>
-          </>
-        )}
-      </header>
+      {!isAuthRoute && (
+        <header className="topbar">
+          <Link to="/explore" className="brand">Collab Editor</Link>
+          <div className="spacer" />
+          <button className="btn" onClick={toggleTheme}>{isLight ? 'Dark' : 'Light'}</button>
+          {user ? (
+            <>
+              <span className="user">{user.name}</span>
+              <button className="btn" onClick={logout}>Logout</button>
+            </>
+          ) : (
+            <>
+              <Link className="btn" to="/login">Login</Link>
+              <Link className="btn" to="/register">Register</Link>
+            </>
+          )}
+        </header>
+      )}
       <Routes>
         <Route path="/" element={<Navigate to="/explore" replace />} />
         <Route path="/login" element={<Login />} />
