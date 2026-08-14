@@ -10,11 +10,11 @@ export default function AuthBrandPanel({ footerText }: { footerText: string }) {
       </div>
 
       <div className="auth-brand-top">
-        <span className="auth-brand-wordmark">Collab Editor</span>
+        <span className="auth-brand-wordmark">Collab Coder</span>
       </div>
 
       <div className="auth-graphic" aria-hidden="true">
-        <svg className="auth-mark" viewBox="0 0 120 120" role="presentation">
+        <svg className="auth-mark" viewBox="0 0 140 140" role="presentation">
           <defs>
             <filter id="authMarkGlow" x="-80%" y="-80%" width="260%" height="260%">
               <feGaussianBlur stdDeviation="4" result="blur" />
@@ -25,26 +25,24 @@ export default function AuthBrandPanel({ footerText }: { footerText: string }) {
             </filter>
           </defs>
           <g filter="url(#authMarkGlow)" stroke="#fff" strokeLinecap="round" fill="none">
-            <line x1="60" y1="18" x2="60" y2="50" strokeWidth="5" />
-            <line x1="60" y1="70" x2="60" y2="102" strokeWidth="5" />
-            <line x1="18" y1="60" x2="50" y2="60" strokeWidth="5" />
-            <line x1="70" y1="60" x2="102" y2="60" strokeWidth="5" />
+            {/* Main asterisk shape - 8 points */}
+            <line x1="70" y1="0" x2="70" y2="52" strokeWidth="5" />
+            <line x1="70" y1="88" x2="70" y2="140" strokeWidth="5" />
+            <line x1="0" y1="70" x2="52" y2="70" strokeWidth="5" />
+            <line x1="88" y1="70" x2="140" y2="70" strokeWidth="5" />
 
-            <line x1="31" y1="31" x2="49" y2="49" strokeWidth="4.5" />
-            <line x1="71" y1="71" x2="89" y2="89" strokeWidth="4.5" />
-            <line x1="89" y1="31" x2="71" y2="49" strokeWidth="4.5" />
-            <line x1="49" y1="71" x2="31" y2="89" strokeWidth="4.5" />
+            {/* Diagonal lines */}
+            <line x1="30" y1="30" x2="58" y2="58" strokeWidth="4.5" />
+            <line x1="82" y1="82" x2="110" y2="110" strokeWidth="4.5" />
+            <line x1="114.8" y1="25" x2="70" y2="71" strokeWidth="4.5" />
+            <line x1="58" y1="82" x2="30" y2="110" strokeWidth="4.5" />
 
-            <line x1="45" y1="22" x2="55" y2="44" strokeWidth="3.5" />
-            <line x1="65" y1="76" x2="75" y2="98" strokeWidth="3.5" />
-            <line x1="22" y1="45" x2="44" y2="55" strokeWidth="3.5" />
-            <line x1="76" y1="65" x2="98" y2="75" strokeWidth="3.5" />
-            <line x1="76" y1="45" x2="98" y2="35" strokeWidth="3.5" />
-            <line x1="22" y1="75" x2="44" y2="65" strokeWidth="3.5" />
-            <line x1="45" y1="98" x2="55" y2="76" strokeWidth="3.5" />
-            <line x1="65" y1="44" x2="75" y2="22" strokeWidth="3.5" />
+            {/* Inner shorter lines for asterisk effect */}
+            <line x1="70" y1="28" x2="70" y2="48" strokeWidth="3.5" />
+            <line x1="70" y1="92" x2="70" y2="112" strokeWidth="3.5" />
+            <line x1="28" y1="70" x2="48" y2="70" strokeWidth="3.5" />
+            <line x1="92" y1="70" x2="112" y2="70" strokeWidth="3.5" />
           </g>
-          <circle cx="60" cy="60" r="5" fill="#fff" />
         </svg>
       </div>
 

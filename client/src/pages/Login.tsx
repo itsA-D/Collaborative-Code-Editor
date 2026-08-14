@@ -24,7 +24,7 @@ export default function Login() {
   return (
     <div className="auth-shell">
       <div className="auth-frame">
-        <AuthBrandPanel footerText="Collaborative editing for HTML, CSS, and JavaScript." />
+        <AuthBrandPanel footerText="Your secure platform to code together, I guess." />
 
         <section className="auth-panel auth-panel-form auth-panel-form-no-top">
           <div className="auth-form-wrap">

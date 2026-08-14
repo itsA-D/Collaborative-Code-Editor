@@ -1,19 +1,27 @@
 :root {
-  --bg: #0b1020;
-  --panel: #111a2f;
-  --text: #e6edf3;
-  --muted: #9aa4b2;
-  --accent: #a305ff;
+  /* IDE Dark Theme - Premium Purple/Black */
+  --bg: #100018;
+  --panel: #17101F;
+  --text: #E8E5ED;
+  --muted: #96909F;
+  --accent: #7C3AED;
+  --accent-bright: #9B5CFF;
   --danger: #ef4444;
-  --border: #1f2a44;
-  --control-bg: #0f172a;
-  --control-border: #2a3760;
-  --button-bg: #1a2540;
-  --button-border: #2a3760;
-  --preview-bg: #0b1020;
-  --glass-panel: color-mix(in srgb, var(--panel) 84%, transparent);
-  --glow: rgba(167, 30, 222, 0.22);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.08);
+  --control-bg: #08090D;
+  --control-border: rgba(255, 255, 255, 0.06);
+  --button-bg: rgba(30, 20, 42, 0.55);
+  --button-border: rgba(255, 255, 255, 0.08);
+  --preview-bg: #08090D;
+  --glass-panel: rgba(25, 15, 35, 0.65);
+  --glass-panel-light: rgba(30, 20, 42, 0.55);
+  --glow: rgba(124, 58, 237, 0.15);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --explorer-bg: rgba(23, 16, 31, 0.75);
+  --tab-active: rgba(124, 58, 237, 0.15);
+  --file-hover: rgba(255, 255, 255, 0.04);
+  --status-bg: rgba(8, 9, 13, 0.85);
 }
 
 /* Light theme */
@@ -248,6 +256,7 @@ html,
   padding: 18px 16px 14px;
   background: #050505;
   overflow: hidden;
+  isolation: isolate;
 }
 
 .auth-brand-top,
@@ -265,7 +274,7 @@ html,
 .auth-grid-line {
   position: absolute;
   display: block;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.08);
   transform-origin: center;
 }
 
@@ -293,7 +302,7 @@ html,
   height: 1px;
   margin-left: -80%;
   margin-top: -0.5px;
-  background: rgba(255, 255, 255, 0.022);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .auth-grid-diag-a {
@@ -329,11 +338,12 @@ html,
 }
 
 .auth-graphic {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 2;
   display: grid;
   place-items: center;
-  transform: translate(-2%, -3%);
+  pointer-events: none;
 }
 
 .auth-mark {
@@ -785,6 +795,634 @@ html[data-theme="light"] .auth-line-input::placeholder {
   font-size: 12px;
 }
 
+/* IDE Layout Structure */
+.ide-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ambient background for IDE */
+.ide-workspace::before {
+  content: '';
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(40px);
+  opacity: .6;
+  background:
+    radial-gradient(1000px 600px at 15% -5%, rgba(124, 58, 237, 0.12), transparent 55%),
+    radial-gradient(800px 500px at 85% 5%, rgba(124, 58, 237, 0.08), transparent 50%);
+}
+
+/* Application Bar */
+.ide-app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--glass-panel);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 10;
+  min-height: 40px;
+}
+
+.ide-app-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ide-brand {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.ide-project-name {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ide-project-separator {
+  color: var(--border-strong);
+  opacity: 0.5;
+}
+
+.ide-app-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ide-collab-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ide-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.ide-status-dot.disconnected {
+  background: #ef4444;
+}
+
+.ide-collab-avatars {
+  display: flex;
+  align-items: center;
+  gap: -4px;
+}
+
+.ide-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  margin-left: -4px;
+}
+
+.ide-avatar:first-child {
+  margin-left: 0;
+}
+
+/* Menu Bar */
+.ide-menu-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: var(--glass-panel-light);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 9;
+  min-height: 28px;
+}
+
+.ide-menu-item {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: transparent;
+  border: none;
+}
+
+.ide-menu-item:hover {
+  color: var(--text);
+  background: var(--file-hover);
+}
+
+.ide-menu-item:focus {
+  color: var(--accent-bright);
+  outline: none;
+}
+
+/* Main Workspace */
+.ide-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  z-index: 5;
+}
+
+/* Editor Area - Full width when no explorer */
+.ide-editor-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--control-bg);
+}
+
+/* Explorer Panel */
+.ide-explorer {
+  width: 220px;
+  min-width: 180px;
+  max-width: 300px;
+  background: var(--explorer-bg);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ide-explorer-header {
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.ide-explorer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.ide-file-section {
+  margin-bottom: 4px;
+}
+
+.ide-section-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.ide-section-title:hover {
+  color: var(--text);
+}
+
+.ide-file-tree {
+  padding-left: 8px;
+}
+
+.ide-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 20px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 0;
+  transition: all 0.1s ease;
+  position: relative;
+}
+
+.ide-file-item:hover {
+  background: var(--file-hover);
+  color: var(--text);
+}
+
+.ide-file-item.active {
+  background: var(--tab-active);
+  color: var(--text);
+}
+
+.ide-file-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+.ide-file-icon {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.ide-file-item.active .ide-file-icon {
+  color: var(--accent-bright);
+  opacity: 1;
+}
+
+/* Editor Area */
+.ide-editor-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--control-bg);
+}
+
+/* Editor Tabs */
+.ide-tabs-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--glass-panel-light);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+}
+
+.ide-tabs-left {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1;
+}
+
+.ide-tabs-left::-webkit-scrollbar {
+  display: none;
+}
+
+.ide-tabs-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.ide-project-name {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ide-collab-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ide-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.ide-status-dot.disconnected {
+  background: #ef4444;
+}
+
+.ide-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  min-width: fit-content;
+}
+
+.ide-tab:hover {
+  background: var(--file-hover);
+  color: var(--text);
+}
+
+.ide-tab.active {
+  background: var(--tab-active);
+  color: var(--text);
+  border-bottom: 2px solid var(--accent);
+}
+
+.ide-tab-close {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  opacity: 0;
+  transition: all 0.15s ease;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.ide-tab:hover .ide-tab-close,
+.ide-tab.active .ide-tab-close {
+  opacity: 0.6;
+}
+
+.ide-tab-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1 !important;
+}
+
+/* Editor Content */
+.ide-editor-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.ide-code-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ide-typing-indicators {
+  display: flex;
+  gap: 6px;
+  padding: 4px 12px;
+  min-height: 24px;
+  background: var(--control-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.ide-typing-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--control-border);
+  background: var(--file-hover);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Preview Panel */
+.ide-preview-panel {
+  width: 40%;
+  min-width: 300px;
+  max-width: 50%;
+  background: var(--preview-bg);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Resize handle between code editor and live preview */
+.ide-resize-handle {
+  width: 5px;
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background: var(--border);
+  position: relative;
+  z-index: 5;
+  touch-action: none;
+  transition: background 0.15s ease;
+}
+
+.ide-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 36px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ide-resize-handle:hover,
+.ide-resize-handle.resizing {
+  background: var(--accent);
+}
+
+.ide-resize-handle:hover::after,
+.ide-resize-handle.resizing::after {
+  opacity: 0.9;
+}
+
+.ide-editor-content.ide-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.ide-preview-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--glass-panel-light);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.ide-preview-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Status Bar */
+.ide-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  background: var(--status-bg);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  min-height: 24px;
+  position: relative;
+  z-index: 10;
+}
+
+.ide-status-left,
+.ide-status-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ide-status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Responsive Design for IDE */
+@media (max-width: 1024px) {
+  .ide-explorer {
+    width: 180px;
+    min-width: 160px;
+  }
+
+  .ide-preview-panel {
+    width: 35%;
+    min-width: 250px;
+  }
+
+  .ide-app-right {
+    gap: 6px;
+  }
+
+  .ide-status-left,
+  .ide-status-right {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .ide-explorer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 200px;
+    z-index: 20;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .ide-explorer.open {
+    transform: translateX(0);
+  }
+
+  .ide-preview-panel {
+    display: none;
+  }
+
+  .ide-resize-handle {
+    display: none;
+  }
+
+  .ide-preview-panel.mobile-visible {
+    display: flex;
+    position: fixed;
+    inset: 68px 0 24px 0;
+    z-index: 15;
+    width: 100%;
+    max-width: none;
+  }
+
+  .ide-app-bar {
+    padding: 6px 8px;
+  }
+
+  .ide-menu-bar {
+    padding: 4px 8px;
+  }
+
+  .ide-menu-item {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  .ide-status-left {
+    gap: 8px;
+  }
+
+  .ide-status-right {
+    display: none;
+  }
+
+  .ide-brand {
+    font-size: 12px;
+  }
+
+  .ide-project-name {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ide-app-left {
+    gap: 8px;
+  }
+
+  .ide-brand {
+    font-size: 11px;
+  }
+
+  .ide-project-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ide-menu-bar {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .ide-menu-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ide-tab {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  .ide-status-bar {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+}
+
 /* Ambient background for editor pages */
 .editor-layout {
   position: relative;
@@ -869,6 +1507,27 @@ html[data-theme="light"] body::before {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
 }
 
+/* IDE Button Enhancements */
+.ide-app-right .btn {
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  color: var(--text);
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.ide-app-right .btn:hover {
+  background: var(--tab-active);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.ide-app-right .btn:active {
+  transform: translateY(0);
+}
+
 /* Tabs */
 .tabs {
   padding: 4px;
@@ -934,6 +1593,46 @@ html[data-theme="light"] .card {
 .monaco-editor .monaco-editor-background,
 .monaco-editor .margin {
   background: var(--control-bg) !important;
+}
+
+/* Custom Scrollbar Styling for IDE */
+.ide-explorer-content::-webkit-scrollbar,
+.ide-tabs-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ide-explorer-content::-webkit-scrollbar-track,
+.ide-tabs-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ide-explorer-content::-webkit-scrollbar-thumb,
+.ide-tabs-container::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.ide-explorer-content::-webkit-scrollbar-thumb:hover,
+.ide-tabs-container::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Monaco Editor Scrollbar Customization */
+.monaco-editor .scrollbar {
+  background: var(--control-bg) !important;
+}
+
+.monaco-editor .scrollbar .slider {
+  background: var(--border-strong) !important;
+}
+
+.monaco-editor .scrollbar .slider:hover {
+  background: var(--muted) !important;
+}
+
+.monaco-editor .scrollbar .slider.active {
+  background: var(--accent) !important;
 }
 
 /* Modal Dialog */

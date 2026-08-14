@@ -7,13 +7,16 @@ import LivePreview from '../components/LivePreview';
 import UserPresence from '../components/UserPresence';
 import Toolbar from '../components/Toolbar';
 import Modal from '../components/Modal';
+import { IDEStatusBar, IDETabs } from '../components/ide';
 import { useAuth } from '../state/AuthContext';
+import { useSnippet } from '../state/SnippetContext';
 import { useSocket } from '../hooks/useSocket';
 import api from '../api/client';
 
 export default function EditorPage() {
   const { snippetId } = useParams();
   const { token, user } = useAuth();
+  const { setSnippetName, registerRenameHandler } = useSnippet();
   const { socket, status } = useSocket(token);
   const [snippet, setSnippet] = useState<any>(null);
   const [tab, setTab] = useState<'html' | 'css' | 'js'>('html');
@@ -23,6 +26,8 @@ export default function EditorPage() {
   const [typing, setTyping] = useState<{ [K in 'html' | 'css' | 'js']: Record<string, { id: string; name: string; color: string; ts: number }> }>({ html: {}, css: {}, js: {} });
   const [deleteModal, setDeleteModal] = useState(false);
   const nav = useNavigate();
+  const hasSetNameRef = useRef(false);
+  const doRenameRef = useRef<(newTitle: string) => Promise<void>>();
 
   // Yjs state
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -84,13 +89,21 @@ export default function EditorPage() {
 
   // load snippet via REST for metadata
   useEffect(() => {
+    // Reset the flag when snippetId changes
+    hasSetNameRef.current = false;
+
     (async () => {
       try {
         const res = await api.get(`/api/snippets/${snippetId}`);
         setSnippet(res.data);
+        // Only set snippet name if not already set (to avoid overwriting renames)
+        if (!hasSetNameRef.current) {
+          setSnippetName(res.data.title || res.data.name || 'new snippet');
+          hasSetNameRef.current = true;
+        }
       } catch { }
     })();
-  }, [snippetId]);
+  }, [snippetId, setSnippetName]);
 
   // socket events for presence (still use socket.io for users list)
   useEffect(() => {
@@ -198,11 +211,24 @@ export default function EditorPage() {
     try {
       await api.put(`/api/snippets/${snippetId}`, { title: newTitle });
       setSnippet((prev: any) => ({ ...prev, title: newTitle }));
+      setSnippetName(newTitle); // Update context to sync with top bar
       setBanner('Renamed'); setTimeout(() => setBanner(null), 1500);
     } catch (e: any) {
       setBanner(e?.response?.data?.message || 'Rename failed');
     }
   }
+
+  // Store doRename in ref
+  doRenameRef.current = doRename;
+
+  // Register rename handler for when snippet is renamed from top bar
+  useEffect(() => {
+    registerRenameHandler(async (newName: string) => {
+      if (doRenameRef.current) {
+        await doRenameRef.current(newName);
+      }
+    });
+  }, [registerRenameHandler]);
 
   async function doDelete() {
     if (!user) { nav('/login'); return; }
@@ -224,68 +250,147 @@ export default function EditorPage() {
   const currentYText = tab === 'html' ? yHtml : tab === 'css' ? yCss : yJs;
   const awareness = providerRef.current?.awareness || null;
 
+  // Tab data
+  const tabs = [
+    { id: 'html', name: 'index.html', type: 'html' as const, icon: '🌐' },
+    { id: 'css', name: 'styles.css', type: 'css' as const, icon: '🎨' },
+    { id: 'js', name: 'script.js', type: 'js' as const, icon: '📜' },
+  ];
+
+  // Cursor position state for status bar
+  const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
+
+  // Resizable live preview panel (persisted per-browser)
+  const [previewWidth, setPreviewWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('ide-preview-width');
+    const parsed = saved ? Number(saved) : NaN;
+    return Number.isFinite(parsed) && parsed >= 28 && parsed <= 50 ? parsed : 40;
+  });
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef(false);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    draggingRef.current = true;
+    setIsResizing(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current || !contentRef.current) return;
+    const rect = contentRef.current.getBoundingClientRect();
+    const widthPct = ((rect.right - e.clientX) / rect.width) * 100;
+    setPreviewWidth(Math.min(50, Math.max(28, widthPct)));
+  };
+
+  const handleResizePointerUp = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setIsResizing(false);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem('ide-preview-width', String(previewWidth));
+  };
+
+  const getLanguageName = (tab: string) => {
+    switch (tab) {
+      case 'html': return 'HTML';
+      case 'css': return 'CSS';
+      case 'js': return 'JavaScript';
+      default: return 'Plain Text';
+    }
+  };
+
   return (
-    <div className="editor-layout">
-      <Toolbar
-        title={snippet?.title || 'Snippet'}
-        onSave={doSave}
-        onFork={doFork}
-        onShare={doShare}
-        onRename={user && snippet?.owner?.toString() === user.id ? doRename : undefined}
-        onDelete={user && snippet?.owner?.toString() === user.id ? () => setDeleteModal(true) : undefined}
-        status={`Socket: ${status} · Users: ${users.length}`}
-      />
-      <div className="editor-main">
-        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="tabs">
-            <button className={`tab ${tab === 'html' ? 'active' : ''}`} onClick={() => setTab('html')}>HTML</button>
-            <button className={`tab ${tab === 'css' ? 'active' : ''}`} onClick={() => setTab('css')}>CSS</button>
-            <button className={`tab ${tab === 'js' ? 'active' : ''}`} onClick={() => setTab('js')}>JS</button>
-          </div>
-          <div className="typing-indicators">
-            {Object.values(typing[tab] || {}).filter((u: any) => u.id !== user?.id).slice(0, 3).map((u: any) => (
-              <span key={u.id} className="typing-pill" style={{ borderColor: u.color, color: u.color }}>{u.name} typing…</span>
-            ))}
-          </div>
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <div style={{ display: tab === 'html' ? 'block' : 'none', height: '100%' }}>
-              <CodeEditor
-                language="html"
-                yText={yHtml}
-                awareness={awareness}
-                onCursor={(pos) => socket?.emit('cursor-move', { snippetId, language: 'html', position: pos })}
-                onChange={handleTyping}
-              />
+    <div className="ide-workspace">
+      <div className="ide-main">
+        <div className="ide-editor-area">
+          <IDETabs
+            tabs={tabs}
+            activeTab={tab}
+            onTabChange={(tabId) => setTab(tabId as 'html' | 'css' | 'js')}
+            isConnected={status === 'connected'}
+            userCount={users.length}
+            onSave={() => doSave(false)}
+            onShare={doShare}
+          />
+          <div className={`ide-editor-content${isResizing ? ' ide-resizing' : ''}`} ref={contentRef}>
+            <div className="ide-code-panel">
+              <div className="ide-typing-indicators">
+                {Object.values(typing[tab] || {}).filter((u: any) => u.id !== user?.id).slice(0, 3).map((u: any) => (
+                  <span key={u.id} className="ide-typing-pill" style={{ borderColor: u.color, color: u.color }}>{u.name} typing…</span>
+                ))}
+              </div>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <div style={{ display: tab === 'html' ? 'block' : 'none', height: '100%' }}>
+                  <CodeEditor
+                    language="html"
+                    yText={yHtml}
+                    awareness={awareness}
+                    onCursor={(pos) => {
+                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                      socket?.emit('cursor-move', { snippetId, language: 'html', position: pos });
+                    }}
+                    onChange={handleTyping}
+                  />
+                </div>
+                <div style={{ display: tab === 'css' ? 'block' : 'none', height: '100%' }}>
+                  <CodeEditor
+                    language="css"
+                    yText={yCss}
+                    awareness={awareness}
+                    onCursor={(pos) => {
+                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                      socket?.emit('cursor-move', { snippetId, language: 'css', position: pos });
+                    }}
+                    onChange={handleTyping}
+                  />
+                </div>
+                <div style={{ display: tab === 'js' ? 'block' : 'none', height: '100%' }}>
+                  <CodeEditor
+                    language="javascript"
+                    yText={yJs}
+                    awareness={awareness}
+                    onCursor={(pos) => {
+                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                      socket?.emit('cursor-move', { snippetId, language: 'js', position: pos });
+                    }}
+                    onChange={handleTyping}
+                  />
+                </div>
+              </div>
             </div>
-            <div style={{ display: tab === 'css' ? 'block' : 'none', height: '100%' }}>
-              <CodeEditor
-                language="css"
-                yText={yCss}
-                awareness={awareness}
-                onCursor={(pos) => socket?.emit('cursor-move', { snippetId, language: 'css', position: pos })}
-                onChange={handleTyping}
-              />
+            <div
+              className={`ide-resize-handle${isResizing ? ' resizing' : ''}`}
+              onPointerDown={handleResizePointerDown}
+              onPointerMove={handleResizePointerMove}
+              onPointerUp={handleResizePointerUp}
+              onPointerCancel={handleResizePointerUp}
+              role="separator"
+              aria-orientation="vertical"
+              aria-valuenow={Math.round(previewWidth)}
+              aria-valuemin={28}
+              aria-valuemax={50}
+              title="Drag to resize preview"
+            />
+            <div className="ide-preview-panel" style={{ width: `${previewWidth}%` }}>
+              <div className="ide-preview-header">Live Preview</div>
+              <div className="ide-preview-content">
+                <LivePreview html={htmlText} css={cssText} js={jsText} />
+              </div>
             </div>
-            <div style={{ display: tab === 'js' ? 'block' : 'none', height: '100%' }}>
-              <CodeEditor
-                language="javascript"
-                yText={yJs}
-                awareness={awareness}
-                onCursor={(pos) => socket?.emit('cursor-move', { snippetId, language: 'js', position: pos })}
-                onChange={handleTyping}
-              />
-            </div>
-          </div>
-        </div>
-        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ marginBottom: 6 }}>Live Preview</div>
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <LivePreview html={htmlText} css={cssText} js={jsText} />
           </div>
         </div>
       </div>
+      <IDEStatusBar
+        isConnected={status === 'connected'}
+        language={getLanguageName(tab)}
+        cursorPosition={cursorPosition}
+      />
       {banner && (
-        <div style={{ padding: 8 }}>
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999, padding: 8 }}>
           <div className="banner">
             <span>{banner}</span>
           </div>

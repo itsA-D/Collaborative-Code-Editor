@@ -25,7 +25,7 @@ export default function Register() {
   return (
     <div className="auth-shell">
       <div className="auth-frame">
-        <AuthBrandPanel footerText="Create an account to start building and collaborating in real time." />
+        <AuthBrandPanel footerText="Secure digital asset management platform." />
 
         <section className="auth-panel auth-panel-form auth-panel-form-no-top">
           <div className="auth-form-wrap">

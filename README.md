@@ -48,6 +48,9 @@ Specifically tailored for developer interviews, education, and pair programming,
 ### Version 1.0.0 (Latest)
 
 #### 🚀 Features
+*   **Premium Authentication UI**: Modern, dark-themed authentication pages with glassmorphism effects, animated brand panel, and smooth transitions using Framer Motion.
+*   **Session Management**: Configurable session duration selector (30min to Always) with estimated expiry time display.
+*   **Social Login Integration**: Support for third-party authentication providers (GitHub, Google, Microsoft, Apple) with icon-only buttons.
 *   **Collaborative Cursors**: Real-time visualization of other users' cursor positions and selections, color-coded for clarity.
 *   **Live Preview Sandbox**: A secure, isolated iframe environment that renders HTML/CSS/JS in real-time with a 500ms debounce for performance.
 *   **Smart Conflict Resolution**: Implements a "Last-Write-Wins" strategy with timestamp validation to handle concurrent edits gracefully.
@@ -63,6 +66,7 @@ Specifically tailored for developer interviews, education, and pair programming,
 This project adheres to modern security practices to ensure data integrity and user safety:
 
 *   **JWT Authentication**: Secure, stateless authentication for both REST API endpoints and Socket.IO connections.
+*   **Premium Auth UI**: Modern authentication interface with form validation, password visibility toggles, and secure session management.
 *   **Sandboxed Execution**: User code is executed within a strictly sandboxed `iframe` with `allow-scripts` permissions, blocking top-level navigation and external resource loading to prevent XSS attacks.
 *   **Input Validation**: All incoming data is rigorously validated using `Zod` schemas to ensure type safety and data integrity.
 *   **Containerization**: Fully containerized database services (MongoDB, Redis) ensure consistent and isolated execution environments.
@@ -78,6 +82,7 @@ subgraph Client
   A[Monaco Editor]
   B[Live Preview iframe]
   C[Cursor Manager]
+  D[Auth Components]
 end
 
 subgraph Server
@@ -94,10 +99,60 @@ end
 
 A -- Edit Events (Debounced) --> SIO
 C -- Cursor Movements --> SIO
+D -- Auth Requests --> API
 SIO <--> R
 SIO --> M
 API -- Auth & CRUD --> M
 ```
+
+### Frontend Structure
+
+The client application is built with React and Vite, featuring a modular component architecture:
+
+```
+client/src/
+├── components/
+│   └── auth/
+│       ├── AuthPage.tsx          # Main authentication page with 2-column layout
+│       ├── AuthCard.tsx          # Glassmorphic card wrapper
+│       ├── BrandPanel.tsx        # Animated brand panel with particles
+│       ├── LoginForm.tsx         # Login form with validation
+│       ├── RegisterForm.tsx      # Registration form with extended fields
+│       ├── Button.tsx            # Reusable button component
+│       ├── InputField.tsx        # Form input with validation
+│       ├── PasswordField.tsx     # Password field with show/hide toggle
+│       ├── SessionDurationSelector.tsx  # Session management selector
+│       ├── SocialLoginButtons.tsx       # Social auth provider buttons
+│       └── index.ts              # Component exports
+├── pages/
+│   ├── Editor.tsx
+│   ├── Explore.tsx
+│   └── ...
+└── state/
+    └── AuthContext.tsx
+```
+
+### Key Technologies
+
+**Frontend:**
+- React 18 with TypeScript
+- Vite for fast development
+- Framer Motion for animations
+- Lucide React for icons
+- Tailwind CSS for styling
+- React Router for navigation
+- Monaco Editor for code editing
+- Socket.IO Client for real-time communication
+
+**Backend:**
+- Node.js with Express
+- Socket.IO for WebSocket communication
+- MongoDB with Mongoose for data persistence
+- Redis for session management
+- JWT for authentication
+- Zod for input validation
+- Helmet for security headers
+- Express Rate Limit for API protection
 
 ## ⚠️ Known Limitations
 
@@ -227,6 +282,8 @@ We welcome contributions from the community!
 *   **[Monaco Editor](https://microsoft.github.io/monaco-editor/)** for the world-class code editing experience.
 *   **[Socket.IO](https://socket.io/)** for the robust real-time communication engine.
 *   **[React](https://react.dev/)** & **[Vite](https://vitejs.dev/)** for the lightning-fast frontend tooling.
+*   **[Framer Motion](https://www.framer.com/motion/)** for smooth animations and transitions.
+*   **[Lucide React](https://lucide.dev/)** for beautiful, consistent icons.
 *   **[Redis](https://redis.io/)** for high-performance session management.
 *   The open-source community for continuous inspiration and support.
 
