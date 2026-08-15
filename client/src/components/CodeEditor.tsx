@@ -2,36 +2,60 @@ import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { MonacoBinding } from 'y-monaco';
 import * as Y from 'yjs';
-import { useFollowUser } from '../hooks/useFollowUser';
-
-interface RemoteCursor {
-  userId: string;
-  name: string;
-  color: string;
-  position: { lineNumber: number; column: number };
-}
 
 interface Props {
   language: 'html' | 'css' | 'javascript';
   yText: Y.Text | null;
-  awareness: any | null;
+  awareness: any;
   readOnly?: boolean;
-  remoteCursors?: RemoteCursor[];
-  followId?: string | null;
   onCursor?: (pos: { lineNumber: number; column: number }) => void;
   onChange?: () => void;
 }
 
-export default function CodeEditor({ language, yText, awareness, readOnly, remoteCursors, followId, onCursor, onChange }: Props) {
+export default function CodeEditor({ language, yText, awareness, readOnly, onCursor, onChange }: Props) {
   const monacoRef = useRef<any>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const [isEditorReady, setIsEditorReady] = useState(false);
-  const [theme, setTheme] = useState<'vs' | 'vs-dark'>(() => (document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark'));
-  const [hoveredLineInfo, setHoveredLineInfo] = useState<{ y: number, x: number, line: number, cursors: RemoteCursor[] } | null>(null);
+  const [theme, setTheme] = useState<'vs' | 'vs-dark' | 'ide-dark'>(() => (document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'ide-dark'));
+
+  // Define custom dark theme for IDE
+  const defineCustomTheme = (monaco: any) => {
+    monaco.editor.defineTheme('ide-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: '', background: '08090D', foreground: 'E8E5ED' },
+        { token: 'comment', foreground: '96909F', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '9B5CFF' },
+        { token: 'string', foreground: '10B981' },
+        { token: 'number', foreground: 'F59E0B' },
+        { token: 'tag', foreground: '7C3AED' },
+        { token: 'attribute.name', foreground: '9B5CFF' },
+        { token: 'attribute.value', foreground: '10B981' },
+        { token: 'delimiter', foreground: '96909F' },
+      ],
+      colors: {
+        'editor.background': '#08090D',
+        'editor.foreground': '#E8E5ED',
+        'editor.lineHighlightBackground': '#17101F',
+        'editorLineNumber.foreground': '#6B7280',
+        'editorLineNumber.activeForeground': '#E8E5ED',
+        'editor.selectionBackground': '#7C3AED33',
+        'editor.inactiveSelectionBackground': '#7C3AED1A',
+        'editorCursor.foreground': '#9B5CFF',
+        'editorIndentGuide.background': '#1F2937',
+        'editorIndentGuide.activeBackground': '#374151',
+        'editorSuggestWidget.background': '#17101F',
+        'editorSuggestWidget.border': '#1F2937',
+        'editorSuggestWidget.foreground': '#E8E5ED',
+        'editorSuggestWidget.selectedBackground': '#7C3AED33',
+      }
+    });
+  };
 
   // Observe theme changes
   useEffect(() => {
-    const update = () => setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark');
+    const update = () => setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'ide-dark');
     const obs = new MutationObserver((m) => {
       if (m.some((x) => x.attributeName === 'data-theme')) update();
     });
@@ -65,7 +89,7 @@ export default function CodeEditor({ language, yText, awareness, readOnly, remot
 
   // Bind Yjs text to Monaco editor
   useEffect(() => {
-    if (!monacoRef.current || !yText) return;
+    if (!monacoRef.current || !yText || !awareness) return;
 
     const { editor, monaco } = monacoRef.current;
 
@@ -79,7 +103,7 @@ export default function CodeEditor({ language, yText, awareness, readOnly, remot
       yText,
       editor.getModel()!,
       new Set([editor]),
-      awareness || undefined
+      awareness
     );
     bindingRef.current = binding;
 
@@ -89,135 +113,30 @@ export default function CodeEditor({ language, yText, awareness, readOnly, remot
     };
   }, [yText, awareness, isEditorReady]);
 
-  // Handle remote line highlights and hover messages
-  const decorationsCollectionRef = useRef<any>(null);
-  const styleRef = useRef<HTMLStyleElement | null>(null);
-
-  useEffect(() => {
-    const el = document.createElement('style');
-    document.head.appendChild(el);
-    styleRef.current = el;
-    return () => {
-      document.head.removeChild(el);
-      if (decorationsCollectionRef.current) {
-        const { editor, widgets } = decorationsCollectionRef.current;
-        if (widgets) {
-          Object.values(widgets).forEach((w: any) => editor.removeContentWidget(w));
-        }
-        decorationsCollectionRef.current.collection.set([]);
-      }
-    };
-  }, []);
-
-  // Render actual custom carets and dynamic inline nametags using Monaco APIs
-  useEffect(() => {
-    if (!monacoRef.current || !isEditorReady || !styleRef.current) return;
-    const { editor, monaco } = monacoRef.current;
-
-    const styles = (remoteCursors || []).map(c => `
-      .remote-line-${c.userId}-${language} {
-        background-color: ${c.color}22 !important;
-      }
-      .remote-caret-${c.userId}-${language} {
-        border-left: 2px solid ${c.color} !important;
-        margin-left: -1px;
-        box-sizing: border-box;
-      }
-    `).join('\n');
-    styleRef.current.innerHTML = styles;
-
-    const currentWidgets = decorationsCollectionRef.current?.widgets || {};
-    const newWidgets: any = {};
-
-    const decorations = (remoteCursors || []).map(c => {
-      // 1. Maintain content widget
-      let widget = currentWidgets[c.userId];
-      if (!widget) {
-        const domNode = document.createElement('div');
-        domNode.style.backgroundColor = c.color;
-        domNode.style.color = '#fff';
-        domNode.style.padding = '0px 4px';
-        domNode.style.borderRadius = '3px 3px 3px 0';
-        domNode.style.fontSize = '10px';
-        domNode.style.fontWeight = '600';
-        domNode.style.whiteSpace = 'nowrap';
-        domNode.style.pointerEvents = 'none';
-        domNode.textContent = c.name;
-
-        widget = {
-          getId: () => `cursor-widget-${c.userId}-${language}`,
-          getDomNode: () => domNode,
-          getPosition: () => ({
-            position: { lineNumber: c.position.lineNumber, column: c.position.column },
-            preference: [monaco.editor.ContentWidgetPositionPreference.ABOVE]
-          })
-        };
-        editor.addContentWidget(widget);
-      } else {
-        // Update existing widget position
-        widget.getPosition = () => ({
-          position: { lineNumber: c.position.lineNumber, column: c.position.column },
-          preference: [monaco.editor.ContentWidgetPositionPreference.ABOVE]
-        });
-        editor.layoutContentWidget(widget);
-      }
-      newWidgets[c.userId] = widget;
-
-      // 2. Return line and caret decoration configuration
-      return [
-        {
-          range: {
-            startLineNumber: c.position.lineNumber,
-            startColumn: 1,
-            endLineNumber: c.position.lineNumber,
-            endColumn: 1,
-          },
-          options: {
-            isWholeLine: true,
-            className: `remote-line-${c.userId}-${language}`,
-          }
-        },
-        {
-          range: {
-            startLineNumber: c.position.lineNumber,
-            startColumn: c.position.column,
-            endLineNumber: c.position.lineNumber,
-            endColumn: c.position.column,
-          },
-          options: {
-            className: `remote-caret-${c.userId}-${language}`,
-          }
-        }
-      ];
-    }).flat();
-
-    // Remove stale widgets
-    Object.keys(currentWidgets).forEach(userId => {
-      if (!newWidgets[userId]) {
-        editor.removeContentWidget(currentWidgets[userId]);
-      }
-    });
-
-    if (!decorationsCollectionRef.current) {
-      decorationsCollectionRef.current = { 
-        editor, // Keep reference for cleanup
-        collection: editor.createDecorationsCollection([]),
-        widgets: {}
-      };
-    }
-    decorationsCollectionRef.current.widgets = newWidgets;
-    decorationsCollectionRef.current.collection.set(decorations);
-  }, [remoteCursors, isEditorReady, language]);
-
-  // Follow Mode Scroll
-  useFollowUser(monacoRef.current?.editor, followId || null, Object.fromEntries((remoteCursors || []).map(c => [c.userId, c])), isEditorReady);
-
   return (
-    <div style={{ height: '100%', position: 'relative' }}>
+    <div style={{ height: '100%' }}>
       <Editor
         theme={theme}
         defaultLanguage={language}
-        options={{ readOnly, fontSize: 14, minimap: { enabled: false }, automaticLayout: true }}
+        options={{
+          readOnly,
+          fontSize: 13,
+          fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+          minimap: { enabled: false },
+          automaticLayout: true,
+          lineNumbers: 'on',
+          scrollBeyondLastLine: false,
+          renderLineHighlight: 'all',
+          padding: { top: 8, bottom: 8 },
+          scrollbar: {
+            vertical: 'auto',
+            horizontal: 'auto',
+            useShadows: false,
+            verticalScrollbarSize: 10,
+            horizontalScrollbarSize: 10,
+          }
+        }}
+        beforeMount={defineCustomTheme}
         onMount={(editor, monaco) => {
           monacoRef.current = { editor, monaco };
           setIsEditorReady(true);

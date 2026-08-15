@@ -1,207 +1,72 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
-import { UndoManager } from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
-import { IndexeddbPersistence } from 'y-indexeddb';
 import CodeEditor from '../components/CodeEditor';
 import LivePreview from '../components/LivePreview';
 import UserPresence from '../components/UserPresence';
 import Toolbar from '../components/Toolbar';
 import Modal from '../components/Modal';
+import { IDEStatusBar, IDETabs } from '../components/ide';
 import { useAuth } from '../state/AuthContext';
+import { useSnippet } from '../state/SnippetContext';
 import { useSocket } from '../hooks/useSocket';
 import api from '../api/client';
-
-interface SnippetData {
-  _id: string;
-  title: string;
-  html: string;
-  css: string;
-  js: string;
-  owner: string | { _id: string; name: string };
-  isPublic: boolean;
-}
-
-interface UserPresenceData {
-  id: string;
-  name: string;
-  color: string;
-  currentTab?: string;
-}
-
-interface CursorData {
-  userId: string;
-  name: string;
-  color: string;
-  position: { lineNumber: number; column: number };
-  ts: number;
-}
-
-interface TypingData {
-  id: string;
-  name: string;
-  color: string;
-  ts: number;
-}
 
 export default function EditorPage() {
   const { snippetId } = useParams();
   const { token, user } = useAuth();
+  const { setSnippetName, registerRenameHandler } = useSnippet();
   const { socket, status } = useSocket(token);
-  const [snippet, setSnippet] = useState<SnippetData | null>(null);
+  const [snippet, setSnippet] = useState<any>(null);
   const [tab, setTab] = useState<'html' | 'css' | 'js'>('html');
-  const [users, setUsers] = useState<UserPresenceData[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [banner, setBanner] = useState<string | null>(null);
   const [showAutosaveToast, setShowAutosaveToast] = useState(false);
-  const [typing, setTyping] = useState<{ [K in 'html' | 'css' | 'js']: Record<string, TypingData> }>({ html: {}, css: {}, js: {} });
-  const [remoteCursors, setRemoteCursors] = useState<{ [K in 'html' | 'css' | 'js']: Record<string, CursorData> }>({ html: {}, css: {}, js: {} });
+  const [typing, setTyping] = useState<{ [K in 'html' | 'css' | 'js']: Record<string, { id: string; name: string; color: string; ts: number }> }>({ html: {}, css: {}, js: {} });
   const [deleteModal, setDeleteModal] = useState(false);
-  const [followId, setFollowId] = useState<string | null>(null);
   const nav = useNavigate();
+  const hasSetNameRef = useRef(false);
+  const doRenameRef = useRef<(newTitle: string) => Promise<void>>();
 
   // Yjs state
   const ydocRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
-  const indexeddbProviderRef = useRef<IndexeddbPersistence | null>(null);
-  const undoManagerRef = useRef<UndoManager | null>(null);
-  const isSyncedRef = useRef(false);
   const [isYjsReady, setIsYjsReady] = useState(false);
-  const [isSynced, setIsSynced] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
   const [htmlText, setHtmlText] = useState('');
   const [cssText, setCssText] = useState('');
   const [jsText, setJsText] = useState('');
 
+  // Get Yjs text types
   const yHtml = useMemo(() => isYjsReady ? ydocRef.current?.getText('html') || null : null, [isYjsReady]);
   const yCss = useMemo(() => isYjsReady ? ydocRef.current?.getText('css') || null : null, [isYjsReady]);
   const yJs = useMemo(() => isYjsReady ? ydocRef.current?.getText('js') || null : null, [isYjsReady]);
 
-  const userColorRef = useRef<string>('#3b82f6');
-
-  function updatePresence(updates: any) {
-    if (!providerRef.current?.awareness) return;
-    const current = providerRef.current.awareness.getLocalState()?.presence || {};
-    providerRef.current.awareness.setLocalStateField('presence', {
-      user: { id: user?.id, name: user?.name || 'Anonymous', color: userColorRef.current },
-      tab,
-      lastActiveAt: Date.now(),
-      ...current,
-      ...updates
-    });
-  }
-
-  // Update presence tab on switch
-  useEffect(() => {
-    if (isYjsReady) updatePresence({ tab });
-  }, [tab, isYjsReady]);
-
-  // Initialize Yjs connection with offline support
+  // Initialize Yjs connection
   useEffect(() => {
     if (!snippetId || !token) return;
 
-    const ydoc = new Y.Doc({ gc: true });
-    const docName = `snippet-${snippetId}`;
-    
-    // Initialize IndexedDB persistence for offline support
-    const indexeddbProvider = new IndexeddbPersistence(docName, ydoc);
-    indexeddbProviderRef.current = indexeddbProvider;
-    
-    // Track offline status
-    indexeddbProvider.whenSynced.then(() => {
-      console.log('IndexedDB data loaded');
-    });
-    
-    // Initialize UndoManager for local undo/redo
-    const undoManager = new UndoManager([ydoc.getText('html'), ydoc.getText('css'), ydoc.getText('js')]);
-    undoManagerRef.current = undoManager;
-    
-    // Track undo/redo availability
-    const updateUndoRedoState = () => {
-      setCanUndo(undoManager.canUndo());
-      setCanRedo(undoManager.canRedo());
-    };
-    undoManager.on('stack-item-added', updateUndoRedoState);
-    undoManager.on('stack-item-popped', updateUndoRedoState);
-    undoManager.on('stack-cleared', updateUndoRedoState);
-    
-    // Initialize WebSocket provider
+    const ydoc = new Y.Doc();
     let wsUrl = (import.meta as any).env.VITE_YJS_URL;
     if (!wsUrl) {
       wsUrl = window.location.protocol === 'https:'
         ? `wss://${window.location.hostname}:1234`
         : 'ws://localhost:1234';
     }
-    const wsProvider = new WebsocketProvider(wsUrl, `${docName}?token=${token}`, ydoc, {
-      // Enable offline mode - continue working when disconnected
-      connect: true
-    });
+    const wsProvider = new WebsocketProvider(wsUrl, `snippet-${snippetId}?token=${token}`, ydoc);
 
     ydocRef.current = ydoc;
     providerRef.current = wsProvider;
     setIsYjsReady(true);
 
-    // Track connection status for offline detection
-    const handleStatus = (event: { status: 'connecting' | 'connected' | 'disconnected' }) => {
-      setIsOffline(event.status === 'disconnected');
-    };
-    wsProvider.on('status', handleStatus);
-
+    // Set user info in awareness
     const userColors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#926fe4', '#ec4899', '#14b8a6', '#84cc16'];
     const colorIdx = (user?.id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % userColors.length;
-    userColorRef.current = userColors[colorIdx];
-
-    wsProvider.awareness.setLocalStateField('presence', {
-      user: { id: user?.id, name: user?.name || 'Anonymous', color: userColorRef.current },
-      tab: 'html',
-      lastActiveAt: Date.now()
+    const color = userColors[colorIdx];
+    wsProvider.awareness.setLocalStateField('user', {
+      name: user?.name || 'Anonymous',
+      color,
     });
-
-    const handleAwarenessChange = () => {
-      const awareness = wsProvider.awareness;
-      const states = Array.from(awareness.getStates().entries());
-      const nextRemoteCursors: any = { html: {}, css: {}, js: {} };
-      const nextTyping: any = { html: {}, css: {}, js: {} };
-      const activeUsers: UserPresenceData[] = [];
-      const seenUsers = new Set<string>();
-
-      const currentTime = Date.now();
-      states.forEach(([clientId, state]: [number, any]) => {
-        if (!state.presence || !state.presence.user) return;
-
-        const { user: u, tab: currentTab, cursor, isTyping, lastActiveAt } = state.presence;
-
-        if (!seenUsers.has(u.id)) {
-          seenUsers.add(u.id);
-          activeUsers.push({ ...u, currentTab });
-        }
-
-        if (state.presence.user.id === user?.id && clientId === awareness.clientID) return; // skip self
-
-        if (currentTab && cursor) {
-          nextRemoteCursors[currentTab][u.id] = {
-            userId: u.id,
-            name: u.name,
-            color: u.color,
-            position: cursor,
-            ts: lastActiveAt
-          };
-        }
-
-        if (currentTab && isTyping && currentTime - lastActiveAt < 3500) {
-          nextTyping[currentTab][u.id] = { id: u.id, name: u.name, color: u.color, ts: lastActiveAt };
-        }
-      });
-      setRemoteCursors(nextRemoteCursors);
-      setTyping(nextTyping);
-      setUsers(activeUsers);
-    };
-
-    wsProvider.awareness.on('change', handleAwarenessChange);
-    // Trigger initial calculation
-    handleAwarenessChange();
 
     // Subscribe to Yjs updates for preview
     const updateHandler = () => {
@@ -211,59 +76,89 @@ export default function EditorPage() {
     };
     ydoc.on('update', updateHandler);
 
-    // Track sync state
-    const syncHandler = (s: boolean) => {
-      setIsSynced(s);
-      isSyncedRef.current = s;
-    };
-    wsProvider.on('sync', syncHandler);
-    
-    // Check initial sync state
-    if (wsProvider.synced) {
-      setIsSynced(true);
-      isSyncedRef.current = true;
-    }
+    // Initial text load
+    updateHandler();
 
     return () => {
       ydoc.off('update', updateHandler);
-      wsProvider.off('sync', syncHandler);
-      wsProvider.off('status', handleStatus);
-      undoManager.off('stack-item-added', updateUndoRedoState);
-      undoManager.off('stack-item-popped', updateUndoRedoState);
-      undoManager.off('stack-cleared', updateUndoRedoState);
-      undoManager.destroy();
       wsProvider.destroy();
-      indexeddbProvider.destroy();
       ydoc.destroy();
       setIsYjsReady(false);
-      setIsSynced(false);
-      setIsOffline(false);
-      setCanUndo(false);
-      setCanRedo(false);
-      isSyncedRef.current = false;
     };
   }, [snippetId, token]);
 
   // load snippet via REST for metadata
   useEffect(() => {
+    // Reset the flag when snippetId changes
+    hasSetNameRef.current = false;
+
     (async () => {
-      if (!snippetId) return;
       try {
         const res = await api.get(`/api/snippets/${snippetId}`);
         setSnippet(res.data);
+        // Only set snippet name if not already set (to avoid overwriting renames)
+        if (!hasSetNameRef.current) {
+          setSnippetName(res.data.title || res.data.name || 'new snippet');
+          hasSetNameRef.current = true;
+        }
       } catch { }
     })();
-  }, [snippetId]);
+  }, [snippetId, setSnippetName]);
 
-  // socket events for non-presence metadata (socket.io cleanup)
+  // socket events for presence (still use socket.io for users list)
   useEffect(() => {
     if (!socket || !snippetId) return;
     socket.emit('join-snippet', { snippetId });
 
+    const onActive = (u: any[]) => setUsers(u);
+    const onJoined = (_: any) => { };
+    const onLeft = (_: any) => { };
+
+    const onTyping = (p: any) => {
+      const { userId, name, language, ts } = p || {};
+      if (!userId || !language) return;
+      const u = users.find(x => x.id === userId);
+      const color = u?.color || 'var(--accent)';
+      setTyping(prev => ({
+        ...prev,
+        [language]: { ...prev[language as 'html' | 'css' | 'js'], [userId]: { id: userId, name, color, ts: ts || Date.now() } }
+      }));
+      setTimeout(() => {
+        setTyping(prev => {
+          const next = { html: { ...prev.html }, css: { ...prev.css }, js: { ...prev.js } } as typeof prev;
+          const map = { ...(next as any)[language] };
+          delete map[userId];
+          (next as any)[language] = map;
+          return next;
+        });
+      }, 1600);
+    };
+
+    socket.on('active-users', onActive);
+    socket.on('user-joined', onJoined);
+    socket.on('user-left', onLeft);
+    socket.on('user-typing', onTyping);
+
     return () => {
       socket.emit('leave-snippet', { snippetId });
+      socket.off('active-users', onActive);
+      socket.off('user-joined', onJoined);
+      socket.off('user-left', onLeft);
+      socket.off('user-typing', onTyping);
     };
   }, [socket, snippetId]);
+
+  // Autosave and Ctrl+S handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        doSave(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [snippetId, user]);
 
   // Autosave every 10 seconds
   useEffect(() => {
@@ -274,70 +169,32 @@ export default function EditorPage() {
     return () => clearInterval(interval);
   }, [snippetId, user]);
 
-  // Ctrl+S handler and undo/redo shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        doSave(false);
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        if (undoManagerRef.current && canUndo) {
-          undoManagerRef.current.undo();
-        }
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-        e.preventDefault();
-        if (undoManagerRef.current && canRedo) {
-          undoManagerRef.current.redo();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [user, snippetId, canUndo, canRedo]); // Rebind if session/snippet or undo state changes
-
-  const doSave = async (isAutoSave: boolean = false) => {
+  async function doSave(isAutoSave: any = false) {
+    const isAuto = isAutoSave === true;
     if (!user) { nav('/login'); return; }
-    if (!ydocRef.current || !snippetId) return;
-    
-    // Use ref to avoid stale closure in interval
-    if (!isSyncedRef.current) {
-      if (!isAutoSave) console.warn('Save blocked: Synchronization in progress');
-      return;
-    }
-
+    if (!ydocRef.current) return;
     try {
-      if (isAutoSave) {
+      if (isAuto) {
         setShowAutosaveToast(true);
         setTimeout(() => setShowAutosaveToast(false), 2000);
       }
       const doc = ydocRef.current;
-      
-      const html = doc.getText('html').toString();
-      const css = doc.getText('css').toString();
-      const js = doc.getText('js').toString();
-
-      // Safeguard: Don't autosave if empty (to prevent accidental overwrite)
-      if (isAutoSave && !html && !css && !js) {
-        return;
-      }
-
       await api.put(`/api/snippets/${snippetId}`, {
-        html,
-        css,
-        js,
+        html: doc.getText('html').toString(),
+        css: doc.getText('css').toString(),
+        js: doc.getText('js').toString(),
       });
-      if (!isAutoSave) {
+      if (!isAuto) {
         setBanner('Saved');
         setTimeout(() => setBanner(null), 1500);
       }
     } catch (e: any) {
-      if (!isAutoSave) {
+      if (!isAuto) {
         setBanner(e?.response?.data?.message || 'Save failed');
         setTimeout(() => setBanner(null), 2000);
       }
     }
-  };
+  }
 
   async function doFork() {
     if (!user) { nav('/login'); return; }
@@ -354,11 +211,24 @@ export default function EditorPage() {
     try {
       await api.put(`/api/snippets/${snippetId}`, { title: newTitle });
       setSnippet((prev: any) => ({ ...prev, title: newTitle }));
+      setSnippetName(newTitle); // Update context to sync with top bar
       setBanner('Renamed'); setTimeout(() => setBanner(null), 1500);
     } catch (e: any) {
       setBanner(e?.response?.data?.message || 'Rename failed');
     }
   }
+
+  // Store doRename in ref
+  doRenameRef.current = doRename;
+
+  // Register rename handler for when snippet is renamed from top bar
+  useEffect(() => {
+    registerRenameHandler(async (newName: string) => {
+      if (doRenameRef.current) {
+        await doRenameRef.current(newName);
+      }
+    });
+  }, [registerRenameHandler]);
 
   async function doDelete() {
     if (!user) { nav('/login'); return; }
@@ -370,122 +240,157 @@ export default function EditorPage() {
     }
   }
 
-  // Handle typing indicator via Yjs awareness
+  // Handle typing indicator via socket (separate from Yjs)
   function handleTyping() {
-    updatePresence({ isTyping: true });
-    
-    // Clear typing indicator after 3 seconds of inactivity
-    if ((window as any).typingTimeout) clearTimeout((window as any).typingTimeout);
-    (window as any).typingTimeout = setTimeout(() => {
-      updatePresence({ isTyping: false });
-    }, 3000);
+    if (!socket || !snippetId) return;
+    socket.emit('typing', { snippetId, language: tab });
   }
 
+  // Get current Yjs text and awareness for active tab
   const currentYText = tab === 'html' ? yHtml : tab === 'css' ? yCss : yJs;
-  // We stop passing awareness directly to y-monaco to bypass its built-in remote cursors.
-  // This allows us to strictly manage custom decorations via our CodeEditor component!
-  const awareness = null;
+  const awareness = providerRef.current?.awareness || null;
 
-  // Follow Mode Logic: Sync Tab and Scroll
-  useEffect(() => {
-    if (!followId) return;
-    const followedUser = users.find(u => u.id === followId);
-    if (!followedUser) return;
-    
-    // Sync tab if different
-    if (followedUser.currentTab && followedUser.currentTab !== tab) {
-      setTab(followedUser.currentTab as 'html' | 'css' | 'js');
+  // Tab data
+  const tabs = [
+    { id: 'html', name: 'index.html', type: 'html' as const, icon: '🌐' },
+    { id: 'css', name: 'styles.css', type: 'css' as const, icon: '🎨' },
+    { id: 'js', name: 'script.js', type: 'js' as const, icon: '📜' },
+  ];
+
+  // Cursor position state for status bar
+  const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
+
+  // Resizable live preview panel (persisted per-browser)
+  const [previewWidth, setPreviewWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('ide-preview-width');
+    const parsed = saved ? Number(saved) : NaN;
+    return Number.isFinite(parsed) && parsed >= 28 && parsed <= 50 ? parsed : 40;
+  });
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef(false);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    draggingRef.current = true;
+    setIsResizing(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current || !contentRef.current) return;
+    const rect = contentRef.current.getBoundingClientRect();
+    const widthPct = ((rect.right - e.clientX) / rect.width) * 100;
+    setPreviewWidth(Math.min(50, Math.max(28, widthPct)));
+  };
+
+  const handleResizePointerUp = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setIsResizing(false);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem('ide-preview-width', String(previewWidth));
+  };
+
+  const getLanguageName = (tab: string) => {
+    switch (tab) {
+      case 'html': return 'HTML';
+      case 'css': return 'CSS';
+      case 'js': return 'JavaScript';
+      default: return 'Plain Text';
     }
-  }, [followId, users]); // Remove 'tab' from dependencies to fix race condition loop
+  };
 
   return (
-    <div className="editor-layout">
-      <Toolbar
-        title={snippet?.title || 'Snippet'}
-        onSave={doSave}
-        onFork={doFork}
-        onShare={doShare}
-        onRename={user && snippet?.owner?.toString() === user.id ? doRename : undefined}
-        onDelete={user && snippet?.owner?.toString() === user.id ? () => setDeleteModal(true) : undefined}
-        status={`Socket: ${status} · Users: ${users.length}${isOffline ? ' · OFFLINE' : ''}`}
-      />
-      <div className="editor-main">
-        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="tabs">
-            <button className={`tab ${tab === 'html' ? 'active' : ''}`} onClick={() => setTab('html')}>HTML</button>
-            <button className={`tab ${tab === 'css' ? 'active' : ''}`} onClick={() => setTab('css')}>CSS</button>
-            <button className={`tab ${tab === 'js' ? 'active' : ''}`} onClick={() => setTab('js')}>JS</button>
-          </div>
-          <div className="typing-indicators">
-            {Object.values(typing[tab] || {}).filter((u: any) => u.id !== user?.id).slice(0, 3).map((u: any) => (
-              <span key={u.id} className="typing-pill" style={{ borderColor: u.color, color: u.color }}>{u.name} typing…</span>
-            ))}
-          </div>
-          <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-            {!isSynced && (
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                zIndex: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backdropFilter: 'blur(4px)',
-                backgroundColor: 'rgba(0,0,0,0.4)',
-                borderRadius: '8px',
-                color: '#fff',
-                fontSize: '14px',
-                fontWeight: '500',
-                gap: '8px'
-              }}>
-                <div className="pulse-dot" style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#3b82f6' }}></div>
-                Establishing lossless sync...
+    <div className="ide-workspace">
+      <div className="ide-main">
+        <div className="ide-editor-area">
+          <IDETabs
+            tabs={tabs}
+            activeTab={tab}
+            onTabChange={(tabId) => setTab(tabId as 'html' | 'css' | 'js')}
+            isConnected={status === 'connected'}
+            userCount={users.length}
+            onSave={() => doSave(false)}
+            onShare={doShare}
+          />
+          <div className={`ide-editor-content${isResizing ? ' ide-resizing' : ''}`} ref={contentRef}>
+            <div className="ide-code-panel">
+              <div className="ide-typing-indicators">
+                {Object.values(typing[tab] || {}).filter((u: any) => u.id !== user?.id).slice(0, 3).map((u: any) => (
+                  <span key={u.id} className="ide-typing-pill" style={{ borderColor: u.color, color: u.color }}>{u.name} typing…</span>
+                ))}
               </div>
-            )}
-            <div style={{ display: tab === 'html' ? 'block' : 'none', height: '100%' }}>
-              <CodeEditor
-                language="html"
-                yText={yHtml}
-                awareness={awareness}
-                remoteCursors={Object.values(remoteCursors['html'])}
-                followId={followId}
-                onCursor={(pos) => updatePresence({ cursor: pos })}
-                onChange={handleTyping}
-              />
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <div style={{ display: tab === 'html' ? 'block' : 'none', height: '100%' }}>
+                  <CodeEditor
+                    language="html"
+                    yText={yHtml}
+                    awareness={awareness}
+                    onCursor={(pos) => {
+                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                      socket?.emit('cursor-move', { snippetId, language: 'html', position: pos });
+                    }}
+                    onChange={handleTyping}
+                  />
+                </div>
+                <div style={{ display: tab === 'css' ? 'block' : 'none', height: '100%' }}>
+                  <CodeEditor
+                    language="css"
+                    yText={yCss}
+                    awareness={awareness}
+                    onCursor={(pos) => {
+                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                      socket?.emit('cursor-move', { snippetId, language: 'css', position: pos });
+                    }}
+                    onChange={handleTyping}
+                  />
+                </div>
+                <div style={{ display: tab === 'js' ? 'block' : 'none', height: '100%' }}>
+                  <CodeEditor
+                    language="javascript"
+                    yText={yJs}
+                    awareness={awareness}
+                    onCursor={(pos) => {
+                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                      socket?.emit('cursor-move', { snippetId, language: 'js', position: pos });
+                    }}
+                    onChange={handleTyping}
+                  />
+                </div>
+              </div>
             </div>
-            <div style={{ display: tab === 'css' ? 'block' : 'none', height: '100%' }}>
-              <CodeEditor
-                language="css"
-                yText={yCss}
-                awareness={awareness}
-                remoteCursors={Object.values(remoteCursors['css'])}
-                followId={followId}
-                onCursor={(pos) => updatePresence({ cursor: pos })}
-                onChange={handleTyping}
-              />
+            <div
+              className={`ide-resize-handle${isResizing ? ' resizing' : ''}`}
+              onPointerDown={handleResizePointerDown}
+              onPointerMove={handleResizePointerMove}
+              onPointerUp={handleResizePointerUp}
+              onPointerCancel={handleResizePointerUp}
+              role="separator"
+              aria-orientation="vertical"
+              aria-valuenow={Math.round(previewWidth)}
+              aria-valuemin={28}
+              aria-valuemax={50}
+              title="Drag to resize preview"
+            />
+            <div className="ide-preview-panel" style={{ width: `${previewWidth}%` }}>
+              <div className="ide-preview-header">Live Preview</div>
+              <div className="ide-preview-content">
+                <LivePreview html={htmlText} css={cssText} js={jsText} />
+              </div>
             </div>
-            <div style={{ display: tab === 'js' ? 'block' : 'none', height: '100%' }}>
-              <CodeEditor
-                language="javascript"
-                yText={yJs}
-                awareness={awareness}
-                remoteCursors={Object.values(remoteCursors['js'])}
-                followId={followId}
-                onCursor={(pos) => updatePresence({ cursor: pos })}
-                onChange={handleTyping}
-              />
-            </div>
-          </div>
-        </div>
-        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ marginBottom: 6 }}>Live Preview</div>
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <LivePreview html={htmlText} css={cssText} js={jsText} />
           </div>
         </div>
       </div>
+      <IDEStatusBar
+        isConnected={status === 'connected'}
+        language={getLanguageName(tab)}
+        cursorPosition={cursorPosition}
+      />
       {banner && (
-        <div style={{ padding: 8 }}>
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999, padding: 8 }}>
           <div className="banner">
             <span>{banner}</span>
           </div>
@@ -494,8 +399,6 @@ export default function EditorPage() {
       <UserPresence
         users={users}
         isAutosaving={showAutosaveToast}
-        followId={followId}
-        onFollowUser={setFollowId}
         onBack={() => {
           const canGoBack = (window.history.state && (window.history.state as any).idx > 0);
           if (canGoBack) nav(-1);
