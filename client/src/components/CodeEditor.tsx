@@ -10,9 +10,15 @@ interface Props {
   readOnly?: boolean;
   onCursor?: (pos: { lineNumber: number; column: number }) => void;
   onChange?: () => void;
+  /**
+   * Local (non-collaborative) mode: seed the Monaco model and report edits.
+   * Used by the temporary session, which has no Yjs document behind it.
+   */
+  defaultValue?: string;
+  onLocalChange?: (value: string) => void;
 }
 
-export default function CodeEditor({ language, yText, awareness, readOnly, onCursor, onChange }: Props) {
+export default function CodeEditor({ language, yText, awareness, readOnly, onCursor, onChange, defaultValue, onLocalChange }: Props) {
   const monacoRef = useRef<any>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const [isEditorReady, setIsEditorReady] = useState(false);
@@ -118,6 +124,8 @@ export default function CodeEditor({ language, yText, awareness, readOnly, onCur
       <Editor
         theme={theme}
         defaultLanguage={language}
+        defaultValue={defaultValue}
+        onChange={(value) => onLocalChange?.(value ?? '')}
         options={{
           readOnly,
           fontSize: 13,

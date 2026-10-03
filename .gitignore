@@ -45,7 +45,12 @@ CHANGELOG_crdt.md
 LWW.MD
 CRDT.MD
 info.me
-
+.agents
+.claude
+.cursor
+.jetro
+.qodo
+.playwright-mcp
 .gitignore
 
 CHANGELOG.md

@@ -1,0 +1,208 @@
+/* ==========================================================================
+   Collab Coder — "Explore" board (the signed-in user's own snippets)
+
+   Lives outside home.css but reuses the `.home-page` token scope declared on
+   the board root, so it shares the glass language with the homepage.
+   ========================================================================== */
+
+.board-page .board__inner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: min(1280px, calc(100% - 32px));
+  padding: 40px 0 64px;
+}
+
+@media (min-width: 768px) {
+  .board-page .board__inner {
+    width: min(1280px, calc(100% - 48px));
+  }
+}
+
+.board__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.board__sub {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--home-text-3);
+}
+
+.board__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.board__search {
+  position: relative;
+  display: block;
+  width: min(340px, 100%);
+}
+
+.board__search-icon {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  font-size: 15px;
+  color: var(--home-text-4);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.board__search-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px 0 36px;
+  font-family: inherit;
+  font-size: 14.5px;
+  color: var(--home-text);
+  background: var(--home-glass);
+  border: 1px solid var(--home-border);
+  border-radius: 10px;
+  outline: none;
+  backdrop-filter: blur(var(--home-blur));
+  -webkit-backdrop-filter: blur(var(--home-blur));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.board__search-input::placeholder {
+  color: var(--home-placeholder);
+}
+
+.board__search-input:focus-visible {
+  border-color: var(--home-accent);
+  box-shadow: 0 0 0 3px var(--home-accent-ring);
+}
+
+.board__pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.board__pager-status {
+  font-size: 13px;
+  color: var(--home-text-3);
+}
+
+.board__error {
+  margin: 0 0 18px;
+  font-size: 13.5px;
+  color: var(--home-danger);
+}
+
+.board__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 640px) {
+  .board__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .board__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  background: var(--home-glass);
+  border: 1px solid var(--home-border-card);
+  border-radius: 14px;
+  backdrop-filter: blur(var(--home-blur));
+  -webkit-backdrop-filter: blur(var(--home-blur));
+  box-shadow: var(--home-shadow-soft);
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.board-card:hover {
+  background: var(--home-glass-strong);
+  border-color: var(--home-border-raised);
+  transform: translateY(-2px);
+}
+
+.board-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board-card__title {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--home-text);
+  overflow-wrap: anywhere;
+}
+
+.board-card__meta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--home-text-4);
+}
+
+.board-card__updated {
+  margin-top: 4px;
+}
+
+.board-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.board__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+  margin: 32px auto 0;
+  padding: 40px 28px;
+  text-align: center;
+  background: var(--home-glass);
+  border: 1px dashed var(--home-border-raised);
+  border-radius: 16px;
+  backdrop-filter: blur(var(--home-blur));
+  -webkit-backdrop-filter: blur(var(--home-blur));
+}
+
+.board__empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--home-text);
+}
+
+.board__empty-text {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--home-text-3);
+}
+
+.board__empty-actions {
+  display: flex;
+  gap: 8px;
+}

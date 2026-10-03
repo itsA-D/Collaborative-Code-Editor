@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 1000 1000">
+  <!-- Collab Coder cursor - dark theme: white fill, near-black outline + internal stroke.
+       Geometry traced from the reference artwork (Douglas-Peucker, 11 pts).
+       Silhouette scaled 0.8 into a 1000-unit box with a 100-unit margin so the
+       miter join does not clip the tip; tip sits at (100,100) = 2px = hotspot 2 2. -->
+  <g fill="none" stroke="#08090D" stroke-width="90" stroke-linejoin="miter" stroke-miterlimit="8">
+    <path d="M100 100 L900 420.8 L718.4 607.2 L728.8 646.4 L881.6 799.2 L801.6 879.2 L626.8 711.2 L420.8 900 Z"/>
+  </g>
+  <path fill="#FFFFFF" d="M100 100 L900 420.8 L718.4 607.2 L728.8 646.4 L881.6 799.2 L801.6 879.2 L626.8 711.2 L420.8 900 Z"/>
+  <path fill="none" stroke="#08090D" stroke-width="45" stroke-linecap="butt" d="M196 180 L424 780"/>
+</svg>

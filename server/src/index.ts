@@ -107,149 +107,12 @@ export const ydocUpdater = {
   }
 };
 
-export async function getOrLoadDoc(docName: string): Promise<Y.Doc | null> {
-  const existing = ydocs.get(docName);
-  
-  // If it exists AND we've already tried to load its content, return it
-  if (existing && loadedDocs.has(docName)) return existing;
-
-  const loading = loadingDocs.get(docName);
-  if (loading) return loading;
-
-  const loadPromise = (async () => {
-    // Uses getYDoc to ensure we are working with the instance y-websocket will use
-    const doc = getYDoc(docName);
-    
-    // If already loaded by another process while waiting, just return
-    if (loadedDocs.has(docName)) return doc;
-
-    try {
-      // Load persisted state from Redis
-      const saved = await redis.getBuffer(`yjs:${docName}`);
-      if (saved && saved.length > 0) {
-        Y.applyUpdate(doc, saved);
-        console.log(`Loaded Yjs state for ${docName} from Redis`);
-      } else {
-        // Seed from MongoDB if no Redis state
-        if (docName.startsWith('snippet-')) {
-          const snippetId = docName.replace('snippet-', '');
-          const snip = await Snippet.findById(snippetId);
-          if (snip) {
-            doc.transact(() => {
-              const h = doc.getText('html'); if (h.length === 0) h.insert(0, snip.html || '');
-              const c = doc.getText('css'); if (c.length === 0) c.insert(0, snip.css || '');
-              const j = doc.getText('js'); if (j.length === 0) j.insert(0, snip.js || '');
-            });
-            console.log(`Seeded Yjs doc ${docName} from MongoDB`);
-          }
-        }
-      }
-
-      // Broadcast local updates to other nodes
-      // Use a custom origin to avoid double-publishing
-      doc.on('update', (update: Uint8Array, origin: any) => {
-        if (origin !== 'redis' && origin !== 'load') {
-          pubClient.publish(`yjs-update:${docName}`, Buffer.from(update).toString('base64'));
-        }
-      });
-
-      loadedDocs.add(docName);
-      return doc;
-    } catch (err) {
-      console.error(`Failed to load Yjs state for ${docName}:`, err);
-      return doc;
-    } finally {
-      loadingDocs.delete(docName);
-    }
-  })();
-
-  loadingDocs.set(docName, loadPromise);
-  return loadPromise;
-}
-
-// Persist Yjs docs to Redis AND MongoDB with retry and consistency checks
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 100;
-
-export async function persistDoc(docName: string): Promise<boolean> {
-  const doc = ydocs.get(docName);
-  if (!doc) return false;
-
-  // Capture content hash for consistency verification
-  const html = doc.getText('html').toString();
-  const css = doc.getText('css').toString();
-  const js = doc.getText('js').toString();
-  const contentHash = `${html.length}:${css.length}:${js.length}:${html.slice(0, 10)}:${css.slice(0, 10)}:${js.slice(0, 10)}`;
-
-  let lastError: Error | null = null;
-
-  // Retry logic for Redis persistence
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      // 1. Save binary state to Redis for fast real-time sync
-      const state = Y.encodeStateAsUpdate(doc);
-      await redis.set(`yjs:${docName}`, Buffer.from(state));
-      
-      // Store content hash for verification
-      await redis.set(`yjs:${docName}:hash`, contentHash);
-      
-      break; // Success
-    } catch (err) {
-      lastError = err as Error;
-      console.error(`Redis persistence attempt ${attempt + 1} failed for ${docName}:`, err);
-      if (attempt < MAX_RETRIES - 1) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
-      }
-    }
-  }
-
-  if (lastError) {
-    console.error(`Redis persistence failed after ${MAX_RETRIES} attempts for ${docName}`);
-    return false;
-  }
-
-  // Retry logic for MongoDB persistence
-  if (docName.startsWith('snippet-')) {
-    const snippetId = docName.replace('snippet-', '');
-    
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        // 2. Save clear text to MongoDB so the rest of the app (REST API, Explore) can read it
-        await Snippet.findByIdAndUpdate(snippetId, {
-          html,
-          css,
-          js,
-          lastSavedAt: new Date()
-        });
-        
-        // Verify consistency by checking stored hash matches current
-        const storedHash = await redis.get(`yjs:${docName}:hash`);
-        if (storedHash !== contentHash) {
-          console.warn(`Consistency check failed for ${docName}: hash mismatch after MongoDB save`);
-          // Hash mismatch means document changed during save - this is acceptable for CRDT
-          // but we log it for monitoring
-        }
-        
-        break; // Success
-      } catch (err) {
-        lastError = err as Error;
-        console.error(`MongoDB persistence attempt ${attempt + 1} failed for ${snippetId}:`, err);
-        if (attempt < MAX_RETRIES - 1) {
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
-        }
-      }
-    }
-
-    if (lastError) {
-      console.error(`MongoDB persistence failed after ${MAX_RETRIES} attempts for ${snippetId}`);
-      // Redis succeeded but MongoDB failed - data is safe in Redis, will be retried on next interval
-      // This is acceptable as Redis is the source of truth for CRDT sync
-      return false;
-    }
-  }
-
-  return true;
-}
+const configuredCorsOrigins = env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
+const corsOrigins = [
+  ...configuredCorsOrigins,
+  /^https?:\/\/localhost(?::\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(?::\d+)?$/,
+];
 
 async function bootstrap() {
   await connectMongo();
@@ -275,7 +138,7 @@ async function bootstrap() {
     crossOriginEmbedderPolicy: false,
   }));
   app.use(cors({
-    origin: typeof env.CORS_ORIGIN === 'string' ? env.CORS_ORIGIN.split(',') : env.CORS_ORIGIN,
+    origin: corsOrigins,
     credentials: true,
   }));
   app.use(express.json({ limit: '1mb' }));
@@ -304,7 +167,7 @@ async function bootstrap() {
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: {
-      origin: typeof env.CORS_ORIGIN === 'string' ? env.CORS_ORIGIN.split(',') : env.CORS_ORIGIN,
+      origin: corsOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     }

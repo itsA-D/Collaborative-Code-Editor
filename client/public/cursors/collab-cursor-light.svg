@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 1000 1000">
+  <!-- Collab Coder cursor - light theme: charcoal fill, soft lilac outline + internal
+       stroke (#C3B4FF, a lightened relative of the accent purple, inside the
+       #B9A7FF-#C8B8FF band). Identical geometry and proportions to the dark cursor. -->
+  <g fill="none" stroke="#C3B4FF" stroke-width="90" stroke-linejoin="miter" stroke-miterlimit="8">
+    <path d="M100 100 L900 420.8 L718.4 607.2 L728.8 646.4 L881.6 799.2 L801.6 879.2 L626.8 711.2 L420.8 900 Z"/>
+  </g>
+  <path fill="#0C1117" d="M100 100 L900 420.8 L718.4 607.2 L728.8 646.4 L881.6 799.2 L801.6 879.2 L626.8 711.2 L420.8 900 Z"/>
+  <path fill="none" stroke="#C3B4FF" stroke-width="45" stroke-linecap="butt" d="M196 180 L424 780"/>
+</svg>

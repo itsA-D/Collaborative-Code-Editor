@@ -1,116 +1,245 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/client';
-import { useAuth } from '../state/AuthContext';
 import Modal from '../components/Modal';
+import { useAuth } from '../state/AuthContext';
+import { useTemporarySession } from '../state/TemporarySessionContext';
 
+const PER_PAGE = 12;
+
+interface BoardSnippet {
+  _id: string;
+  title: string;
+  views?: number;
+  forks?: number;
+  updatedAt?: string;
+}
+
+function formatWhen(iso?: string) {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/**
+ * The signed-in user's own snippet workspace. There is no public/community
+ * feed: the list is always scoped to the current owner.
+ */
 export default function Explore() {
-  const [items, setItems] = useState<any[]>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [title, setTitle] = useState('New Snippet');
-  const [q, setQ] = useState('');
-  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: string | null; title: string }>({
-    isOpen: false,
-    id: null,
-    title: ''
-  });
   const { user } = useAuth();
+  const { startSession } = useTemporarySession();
   const nav = useNavigate();
 
-  async function load(p = 1) {
-    if (!user) { setItems([]); setTotal(0); return; }
-    const res = await api.get(`/api/snippets?page=${p}&limit=12&owner=${user.id}`);
-    setItems(res.data.items); setTotal(res.data.total); setPage(res.data.page);
-  }
-  useEffect(() => { load(); }, [user]);
+  const [items, setItems] = useState<BoardSnippet[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [query, setQuery] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(
+    async (p = 1) => {
+      if (!user) {
+        setItems([]);
+        setTotal(0);
+        setPage(1);
+        return;
+      }
+      try {
+        const res = await api.get(`/api/snippets?page=${p}&limit=${PER_PAGE}&owner=${user.id}`);
+        setItems(res.data.items || []);
+        setTotal(res.data.total || 0);
+        setPage(res.data.page || p);
+        setLoadError('');
+      } catch (e: any) {
+        setItems([]);
+        setTotal(0);
+        setLoadError(e?.response?.data?.message || 'Could not load your snippets.');
+      }
+    },
+    [user]
+  );
+
+  useEffect(() => {
+    load(1);
+  }, [load]);
 
   const visible = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const term = query.trim().toLowerCase();
     if (!term) return items;
-    return items.filter((it) => (it.title || '').toLowerCase().includes(term));
-  }, [items, q]);
+    return items.filter((item) => (item.title || '').toLowerCase().includes(term));
+  }, [items, query]);
 
-  async function createSnippet() {
-    if (!user) { nav('/login'); return; }
-    const res = await api.post('/api/snippets', { title, html: '<h1>Hello</h1>', css: 'h1{color:#3b82f6;}', js: "console.log('Hello')", isPublic: true });
-    nav(`/editor/${res.data._id}`);
+  const pages = Math.ceil(total / PER_PAGE) || 1;
+
+  function goToPage(next: number) {
+    if (next < 1 || next > pages || next === page) return;
+    load(next);
+  }
+
+  /** Same temporary-session entry point as the homepage. */
+  function startNew() {
+    if (!user) {
+      nav('/login');
+      return;
+    }
+    startSession();
+    nav('/editor/temp');
   }
 
   async function deleteSnippet() {
-    if (!deleteModal.id) return;
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setActionError('');
     try {
-      await api.delete(`/api/snippets/${deleteModal.id}`);
-      setDeleteModal({ isOpen: false, id: null, title: '' });
-      load(page); // Reload current page
+      await api.delete(`/api/snippets/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      setDeleting(false);
+      load(page);
     } catch (e: any) {
-      alert(e?.response?.data?.message || 'Delete failed');
+      setDeleting(false);
+      setActionError(e?.response?.data?.message || 'Delete failed.');
     }
   }
 
-  const pages = Math.ceil(total / 12) || 1;
+  if (!user) {
+    return (
+      <div className="home-page board-page">
+        <main className="home-container board__inner">
+          <div className="board__head">
+            <h1 className="home-h2">Your snippets</h1>
+          </div>
+          <div className="board__empty">
+            <p className="board__empty-title">Nothing here yet</p>
+            <p className="board__empty-text">Log in to see your own stuff....</p>
+            <div className="board__empty-actions">
+              <Link className="home-btn home-btn--ghost" to="/login">
+                Login
+              </Link>
+              <Link className="home-btn home-btn--primary" to="/">
+                Back to home
+              </Link>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <div className="explore-wrap">
-      <section className="explore-hero">
-        <div className="hero-content">
+    <div className="home-page board-page">
+      <main className="home-container board__inner">
+        <div className="board__head">
           <div>
-            <h1 className="hero-title">Create. Fork. Collaborate.</h1>
-            <p className="hero-sub">A CodePen-like space for HTML/CSS/JS with real-time collab.</p>
+            <h1 className="home-h2">Your snippets</h1>
+            <p className="board__sub">
+              {total} {total === 1 ? 'snippet' : 'snippets'} saved to your account.
+            </p>
           </div>
-          {user ? (
-            <div className="explore-actions">
-              <input className="input input-lg" value={title} onChange={e => setTitle(e.target.value)} placeholder="New snippet title" />
-              <button className="btn primary btn-lg" onClick={createSnippet}>New Pen</button>
-            </div>
-          ) : (
-            <div className="explore-actions">
-              <button className="btn primary btn-lg" onClick={() => nav('/login')}>Login to Create Snippet</button>
-            </div>
-          )}
+          <button type="button" className="home-btn home-btn--primary home-btn--sm" onClick={startNew}>
+            New snippet
+          </button>
         </div>
-      </section>
 
-      <div className="explore-toolbar">
-        <input className="input" placeholder="Search snippets" value={q} onChange={e => setQ(e.target.value)} />
-        <div className="pager">
-          <button className="btn" disabled={page <= 1} onClick={() => load(page - 1)}>Prev</button>
-          <span className="status">Page {page} / {pages}</span>
-          <button className="btn" disabled={page >= pages} onClick={() => load(page + 1)}>Next</button>
-        </div>
-      </div>
+        <div className="board__toolbar">
+          <label className="board__search">
+            <span className="board__search-icon" aria-hidden="true">
+              ⌕
+            </span>
+            <span className="visually-hidden">Search your snippets</span>
+            <input
+              className="board__search-input"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search your snippets"
+            />
+          </label>
 
-      <div className="pen-grid">
-        {visible.map(it => (
-          <div className="pen-card" key={it._id}>
-            <div className="pen-header">
-              <h4 className="pen-title">{it.title}</h4>
-              <span className="pen-meta">Views {it.views} · Forks {it.forks}</span>
-            </div>
-            <div className="pen-actions">
-              <Link className="btn" to={`/editor/${it._id}`}>Open</Link>
-              <button
-                className="btn"
-                style={{ color: '#ef4444' }}
-                onClick={() => setDeleteModal({ isOpen: true, id: it._id, title: it.title })}
-              >
-                Delete
-              </button>
-            </div>
+          <div className="board__pager">
+            <button type="button" className="home-btn home-btn--ghost home-btn--sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
+              Prev
+            </button>
+            <span className="board__pager-status">
+              Page {page} / {pages}
+            </span>
+            <button type="button" className="home-btn home-btn--ghost home-btn--sm" disabled={page >= pages} onClick={() => goToPage(page + 1)}>
+              Next
+            </button>
           </div>
-        ))}
-        {visible.length === 0 && (
-          <div className="empty-note">No results. Try a different title.</div>
+        </div>
+
+        {actionError && (
+          <p className="board__error" role="alert">
+            {actionError}
+          </p>
         )}
-      </div>
+
+        {loadError ? (
+          <div className="board__empty" role="status">
+            <p className="board__empty-title">{loadError}</p>
+            <button type="button" className="home-btn home-btn--ghost" onClick={() => load(page)}>
+              Try again
+            </button>
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="board__empty">
+            <p className="board__empty-title">{query ? 'No matching snippets' : 'No snippets yet'}</p>
+            <p className="board__empty-text">
+              {query
+                ? 'Try a different name, or clear the search to see everything.'
+                : 'Start a temporary session and save it when you are ready.'}
+            </p>
+            <button type="button" className="home-btn home-btn--primary" onClick={query ? () => setQuery('') : startNew}>
+              {query ? 'Clear search' : 'Start coding free'}
+            </button>
+          </div>
+        ) : (
+          <ul className="board__grid">
+            {visible.map((item) => (
+              <li className="board-card" key={item._id}>
+                <div className="board-card__head">
+                  <h2 className="board-card__title">{item.title}</h2>
+                  <span className="board-card__meta">
+                    {item.views || 0} views · {item.forks || 0} forks
+                  </span>
+                </div>
+                <p className="board-card__meta board-card__updated">{formatWhen(item.updatedAt)}</p>
+                <div className="board-card__actions">
+                  <Link className="home-btn home-btn--ghost home-btn--sm" to={`/editor/${item._id}`}>
+                    Open
+                  </Link>
+                  <button
+                    type="button"
+                    className="home-btn home-btn--danger home-btn--sm"
+                    onClick={() => setDeleteTarget({ id: item._id, title: item.title })}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
 
       <Modal
-        isOpen={deleteModal.isOpen}
-        onClose={() => setDeleteModal({ isOpen: false, id: null, title: '' })}
+        isOpen={deleteTarget !== null}
+        onClose={() => !deleting && setDeleteTarget(null)}
         onConfirm={deleteSnippet}
         title="Delete Snippet"
-        message={`Are you sure you want to delete "${deleteModal.title}"? This action cannot be undone.`}
-        confirmText="Delete"
+        message={`Are you sure you want to delete "${deleteTarget?.title || 'this snippet'}"? This action cannot be undone.`}
+        confirmText={deleting ? 'Deleting…' : 'Delete'}
         cancelText="Cancel"
         isDanger={true}
       />

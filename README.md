@@ -36,10 +36,10 @@ The **Collaborative Code Editor Platform** is a robust .NET-inspired, full-stack
 
 This platform is engineered to solve the complex challenges of concurrent editing, providing a Google Docs-like experience for developers. Key architectural benefits include:
 
-*   **Real-Time Synchronization**: Utilizing Socket.IO for low-latency, bi-directional communication ensures that every keystroke is synced instantly across all connected clients.
-*   **Scalability**: The separation of the frontend (React/Vite) and backend (Node/Express) allows for independent scaling. Redis is employed for session management, ensuring the system can handle increasing loads efficiently.
-*   **Security**: Built-in JWT authentication and sandboxed execution environments protect both the user and the server from malicious code and unauthorized access.
-*   **Resilience**: MongoDB provides persistent storage for code snippets, while an offline buffer strategy ensures work is never lost, even during network interruptions.
+*   **Real-Time Synchronization**: Built on Yjs CRDT over a dedicated `y-websocket` WebSocket server for low-latency, conflict-free bidirectional editing — every keystroke is merged and synced instantly across all connected clients without data loss.
+*   **Scalability**: The separation of the frontend (React/Vite) and backend (Node/Express) allows for independent scaling. Redis persists the binary Yjs document state and acts as the realtime sync cache, while a Redis pub/sub channel (`yjs-update:*`) keeps multiple server nodes in sync.
+*   **Security**: Built-in JWT authentication (on both REST and the collaboration socket) and a sandboxed live-preview iframe protect both the user and the server from malicious code and unauthorized access.
+*   **Resilience**: MongoDB provides durable persistence for code snippets; the Yjs document is periodically autosaved and also flushed on disconnect, so collaborative work is never lost.
 
 Specifically tailored for developer interviews, education, and pair programming, this platform integrates a rich code editing experience (Monaco Editor) with a live preview engine.
 
@@ -53,13 +53,13 @@ Specifically tailored for developer interviews, education, and pair programming,
 *   **Social Login Integration**: Support for third-party authentication providers (GitHub, Google, Microsoft, Apple) with icon-only buttons.
 *   **Collaborative Cursors**: Real-time visualization of other users' cursor positions and selections, color-coded for clarity.
 *   **Live Preview Sandbox**: A secure, isolated iframe environment that renders HTML/CSS/JS in real-time with a 500ms debounce for performance.
-*   **Smart Conflict Resolution**: Implements a "Last-Write-Wins" strategy with timestamp validation to handle concurrent edits gracefully.
-*   **Offline Support**: An intelligent buffer system that caches changes locally when offline and prompts for a merge upon reconnection.
+*   **Conflict-Free Collaboration (CRDT)**: Uses Yjs, a conflict-free replicated data type, with `y-websocket` for real-time sync, `y-monaco` to bind editor state, and conflict-aware guards to prevent data loss during concurrent edits.
+*   **Offline Support**: The editor binds directly to a local Yjs document, so pending edits survive reconnects and are automatically reconciled with remote state on reconnection via Yjs state-vector merge.
 *   **Rate Limiting**: Integrated middleware to prevent abuse and ensure service stability.
 
 #### ⚡ Performance
-*   **Redis Session Caching**: Active sessions and user states are stored in Redis for sub-millisecond access times.
-*   **Optimized Debouncing**: Network traffic is minimized by debouncing edit events (200ms), reducing server load without compromising the user experience.
+*   **Redis Yjs State Cache**: The binary Yjs document state is stored in Redis (`yjs:{doc}`) for sub-millisecond access and fast realtime sync across nodes.
+*   **Optimized Preview Debounce**: Live preview recomputation is debounced to 500ms, and collaboration traffic travels over compressed WebSockets to keep network overhead low.
 
 ## 🛡 Standards & Security
 
@@ -67,7 +67,7 @@ This project adheres to modern security practices to ensure data integrity and u
 
 *   **JWT Authentication**: Secure, stateless authentication for both REST API endpoints and Socket.IO connections.
 *   **Premium Auth UI**: Modern authentication interface with form validation, password visibility toggles, and secure session management.
-*   **Sandboxed Execution**: User code is executed within a strictly sandboxed `iframe` with `allow-scripts` permissions, blocking top-level navigation and external resource loading to prevent XSS attacks.
+*   **Sandboxed Execution**: User code is executed within a strictly sandboxed `iframe` with `sandbox="allow-scripts"` (no `allow-same-origin`) and an injected Content-Security-Policy that blocks inline scripts (via nonce), style/font/data restrictions, external connections, and frame/object sources to prevent XSS attacks.
 *   **Input Validation**: All incoming data is rigorously validated using `Zod` schemas to ensure type safety and data integrity.
 *   **Containerization**: Fully containerized database services (MongoDB, Redis) ensure consistent and isolated execution environments.
 
@@ -81,14 +81,16 @@ subgraph Client
   direction TB
   A[Monaco Editor]
   B[Live Preview iframe]
-  C[Cursor Manager]
+  C[Presence Panel]
   D[Auth Components]
+  E[Yjs Doc + y-monaco Binding]
 end
 
 subgraph Server
   direction TB
   API[REST API]
-  SIO[Socket.IO]
+  YWS[Yjs WebSocket Server]
+  SIO[Socket.IO Presence]
 end
 
 subgraph Infra
@@ -97,12 +99,13 @@ subgraph Infra
   M[(MongoDB)]
 end
 
-A -- Edit Events (Debounced) --> SIO
-C -- Cursor Movements --> SIO
+E -- CRDT Updates (y-websocket) --> YWS
+C -- Presence Events --> SIO
 D -- Auth Requests --> API
-SIO <--> R
-SIO --> M
-API -- Auth & CRUD --> M
+YWS <--> R
+YWS --> M
+API -- Auth & Snippet CRUD --> M
+R -- pub/sub yjs-update:* --> YWS
 ```
 
 ### Frontend Structure
@@ -111,25 +114,25 @@ The client application is built with React and Vite, featuring a modular compone
 
 ```
 client/src/
+├── api/
+│   └── client.ts             # Axios REST client
 ├── components/
-│   └── auth/
-│       ├── AuthPage.tsx          # Main authentication page with 2-column layout
-│       ├── AuthCard.tsx          # Glassmorphic card wrapper
-│       ├── BrandPanel.tsx        # Animated brand panel with particles
-│       ├── LoginForm.tsx         # Login form with validation
-│       ├── RegisterForm.tsx      # Registration form with extended fields
-│       ├── Button.tsx            # Reusable button component
-│       ├── InputField.tsx        # Form input with validation
-│       ├── PasswordField.tsx     # Password field with show/hide toggle
-│       ├── SessionDurationSelector.tsx  # Session management selector
-│       ├── SocialLoginButtons.tsx       # Social auth provider buttons
-│       └── index.ts              # Component exports
+│   ├── auth/                 # Auth UI (AuthPage, LoginForm, RegisterForm, SessionDurationSelector, SocialLoginButtons, ...)
+│   ├── ide/                  # IDE chrome (IDEAppBar, IDETabs, IDEStatusBar, IDEMenuBar, IDEExplorer, ...)
+│   ├── CodeEditor.tsx        # Monaco wrapper with y-monaco MonacoBinding
+│   ├── LivePreview.tsx       # Sandboxed iframe with CSP nonce
+│   ├── UserPresence.tsx      # Active user list
+│   ├── Toolbar.tsx, Modal.tsx
+├── hooks/
+│   ├── useSocket.ts          # Socket.IO client lifecycle (presence/typing only)
+│   └── useFollowUser.ts
 ├── pages/
-│   ├── Editor.tsx
-│   ├── Explore.tsx
-│   └── ...
+│   ├── Editor.tsx            # Yjs provider init, Monaco + preview wiring, socket orchestration
+│   ├── Explore.tsx           # Snippet list/create/delete
+│   ├── Login.tsx, Register.tsx
 └── state/
-    └── AuthContext.tsx
+    ├── AuthContext.tsx       # Auth state in localStorage + API login/register
+    └── SnippetContext.tsx    # Snippet title state
 ```
 
 ### Key Technologies
@@ -142,13 +145,17 @@ client/src/
 - Tailwind CSS for styling
 - React Router for navigation
 - Monaco Editor for code editing
-- Socket.IO Client for real-time communication
+- Yjs + `y-websocket` (WebsocketProvider) for collaborative editing
+- `y-monaco` for binding Yjs text to the Monaco model
+- Socket.IO Client for presence/typing indicators
 
 **Backend:**
 - Node.js with Express
-- Socket.IO for WebSocket communication
+- Yjs + `y-websocket` for the collaboration WebSocket server (CRDT)
+- `ws` for the raw Yjs WebSocket transport
+- Socket.IO for presence/typing (WebSocket + Redis adapter)
 - MongoDB with Mongoose for data persistence
-- Redis for session management
+- Redis for Yjs document state cache + pub/sub sync
 - JWT for authentication
 - Zod for input validation
 - Helmet for security headers
@@ -159,7 +166,7 @@ client/src/
 While the platform is production-ready for many use cases, there are specific architectural constraints to be aware of:
 
 *   **Concurrency Limits**: The current WebSocket broadcast architecture is optimized for small-to-medium collaboration groups (approx. 10 active users per session). Larger groups may experience increased latency due to message broadcast overhead (N*N complexity).
-*   **Conflict Resolution**: We utilize a "Last-Write-Wins" strategy with timestamp validation. This is robust for typical pair programming but does not offer the same character-level merge guarantees as Operational Transformation (OT) or CRDTs during high-latency, high-concurrency bursts.
+*   **Conflict Resolution**: Collaboration is conflict-free at the character level via the Yjs CRDT, so concurrent edits merge without loss. However, REST metadata updates (title) and the REST auto-save use an optimistic-concurrency guard that returns a 409 conflict when the document was concurrently modified — users refresh or retry in that case.
 *   **Mobile Support**: The editor is built on the Monaco Editor (VS Code core), which has limited support for mobile browsers and touch inputs. The platform is designed as a desktop-first experience.
 *   **Client-Side Execution**: Code execution is performed within a client-side sandboxed iframe. This ensures high security and zero server-side computation costs but limits language support to web technologies (HTML/CSS/JS). Backend execution for languages like Python or Java is not currently supported.
 
@@ -229,16 +236,19 @@ cd server
 Create a `.env` file with the following variables:
 ```env
 PORT=4000
+YJS_PORT=1234
 MONGO_URI=mongodb://localhost:27017/collab-editor
-REDIS_HOST=localhost
-REDIS_PORT=6379
+REDIS_URL=redis://localhost:6379
 JWT_SECRET=your_secure_secret_key
-CLIENT_URL=http://localhost:5173
+CORS_ORIGIN=http://localhost:5173
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX=200
 ```
 Start the development server:
 ```bash
 npm run dev
 ```
+> The server runs three listeners on one process: the REST API (`PORT`, 4000), Socket.IO presence (same HTTP server), and the Yjs collaboration WebSocket (`YJS_PORT`, 1234).
 
 #### 3. Frontend Configuration
 Navigate to the `client` directory.
@@ -249,6 +259,8 @@ Create a `.env` file:
 ```env
 VITE_API_URL=http://localhost:4000
 VITE_SOCKET_URL=http://localhost:4000
+# Optional - defaults to ws://localhost:1234 (or wss://<hostname>:1234 on https)
+VITE_YJS_URL=ws://localhost:1234
 ```
 Start the Vite development server:
 ```bash
@@ -257,9 +269,10 @@ npm run dev
 
 ### ⚠️ Troubleshooting
 
-*   **Port Conflicts**: If port `4000` or `5173` is in use, update the `.env` files in both server and client to use available ports.
+*   **Port Conflicts**: If port `4000`, `1234` (Yjs), or `5173` is in use, update the `.env` files in both server and client to use available ports.
 *   **Connection Refused**: Ensure Docker is running and the containers are healthy (`docker ps`).
-*   **CORS Errors**: Verify that `CLIENT_URL` in `server/.env` matches the URL where your frontend is running.
+*   **CORS Errors**: Verify that `CORS_ORIGIN` in `server/.env` matches the URL where your frontend is running.
+*   **Editor not syncing**: Confirm the collaboration WebSocket on port `1234` is reachable and that `VITE_YJS_URL` (or the default port) matches `YJS_PORT` in `server/.env`.
 
 ## 📚 Documentation
 
