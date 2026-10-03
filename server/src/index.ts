@@ -27,6 +27,62 @@ const loadingDocs = new Map<string, Promise<Y.Doc>>();
 const PERSIST_INTERVAL = 30000; // 30 seconds
 const loadedDocs = new Set<string>(); // Keep track of which docs have been initialized from DB/Redis
 
+export async function getOrLoadDoc(docName: string): Promise<Y.Doc | null> {
+  const existing = ydocs.get(docName);
+  if (existing && loadedDocs.has(docName)) return existing;
+
+  const loading = loadingDocs.get(docName);
+  if (loading) return loading;
+
+  const loadPromise = (async () => {
+    const doc = getYDoc(docName);
+    if (loadedDocs.has(docName)) return doc;
+
+    try {
+      const saved = await redis.getBuffer(`yjs:${docName}`);
+      if (saved && saved.length > 0) {
+        Y.applyUpdate(doc, saved);
+      } else if (docName.startsWith('snippet-')) {
+        const snippet = await Snippet.findById(docName.replace('snippet-', ''));
+        if (snippet) {
+          doc.getText('html').insert(0, snippet.html || '');
+          doc.getText('css').insert(0, snippet.css || '');
+          doc.getText('js').insert(0, snippet.js || '');
+        }
+      }
+      loadedDocs.add(docName);
+      return doc;
+    } catch (error) {
+      console.error(`Failed to load Yjs document ${docName}:`, error);
+      return null;
+    } finally {
+      loadingDocs.delete(docName);
+    }
+  })();
+
+  loadingDocs.set(docName, loadPromise);
+  return loadPromise;
+}
+
+export async function persistDoc(docName: string): Promise<boolean> {
+  const doc = ydocs.get(docName);
+  if (!doc) return false;
+
+  const state = Y.encodeStateAsUpdate(doc);
+  await redis.set(`yjs:${docName}`, Buffer.from(state));
+
+  if (docName.startsWith('snippet-')) {
+    const snippetId = docName.replace('snippet-', '');
+    await Snippet.findByIdAndUpdate(snippetId, {
+      html: doc.getText('html').toString(),
+      css: doc.getText('css').toString(),
+      js: doc.getText('js').toString(),
+      lastSavedAt: new Date(),
+    });
+  }
+  return true;
+}
+
 // Simple diff-based update to preserve concurrent CRDT edits
 function applyDiffUpdate(yText: Y.Text, newContent: string) {
   const currentContent = yText.toString();
