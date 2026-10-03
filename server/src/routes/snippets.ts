@@ -9,6 +9,14 @@ import * as Y from 'yjs';
 
 const router = Router();
 
+function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index++) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
+}
+
 function parseSnippetId(id: string) {
   return Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null;
 }
