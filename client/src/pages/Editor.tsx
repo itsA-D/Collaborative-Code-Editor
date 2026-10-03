@@ -3,11 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import CodeEditor from '../components/CodeEditor';
-import LivePreview from '../components/LivePreview';
 import UserPresence from '../components/UserPresence';
-import Toolbar from '../components/Toolbar';
 import Modal from '../components/Modal';
-import { IDEStatusBar, IDETabs } from '../components/ide';
+import { IDEWorkspace } from '../components/ide';
 import { useAuth } from '../state/AuthContext';
 import { useSnippet } from '../state/SnippetContext';
 import { useSocket } from '../hooks/useSocket';
@@ -260,40 +258,6 @@ export default function EditorPage() {
   // Cursor position state for status bar
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
 
-  // Resizable live preview panel (persisted per-browser)
-  const [previewWidth, setPreviewWidth] = useState<number>(() => {
-    const saved = localStorage.getItem('ide-preview-width');
-    const parsed = saved ? Number(saved) : NaN;
-    return Number.isFinite(parsed) && parsed >= 28 && parsed <= 50 ? parsed : 40;
-  });
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const draggingRef = useRef(false);
-  const [isResizing, setIsResizing] = useState(false);
-
-  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    draggingRef.current = true;
-    setIsResizing(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  };
-
-  const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!draggingRef.current || !contentRef.current) return;
-    const rect = contentRef.current.getBoundingClientRect();
-    const widthPct = ((rect.right - e.clientX) / rect.width) * 100;
-    setPreviewWidth(Math.min(50, Math.max(28, widthPct)));
-  };
-
-  const handleResizePointerUp = () => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    setIsResizing(false);
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-    localStorage.setItem('ide-preview-width', String(previewWidth));
-  };
-
   const getLanguageName = (tab: string) => {
     switch (tab) {
       case 'html': return 'HTML';
@@ -304,91 +268,68 @@ export default function EditorPage() {
   };
 
   return (
-    <div className="ide-workspace">
-      <div className="ide-main">
-        <div className="ide-editor-area">
-          <IDETabs
-            tabs={tabs}
-            activeTab={tab}
-            onTabChange={(tabId) => setTab(tabId as 'html' | 'css' | 'js')}
-            isConnected={status === 'connected'}
-            userCount={users.length}
-            onSave={() => doSave(false)}
-            onShare={doShare}
-          />
-          <div className={`ide-editor-content${isResizing ? ' ide-resizing' : ''}`} ref={contentRef}>
-            <div className="ide-code-panel">
-              <div className="ide-typing-indicators">
-                {Object.values(typing[tab] || {}).filter((u: any) => u.id !== user?.id).slice(0, 3).map((u: any) => (
-                  <span key={u.id} className="ide-typing-pill" style={{ borderColor: u.color, color: u.color }}>{u.name} typing…</span>
-                ))}
-              </div>
-              <div style={{ flex: 1, minHeight: 0 }}>
-                <div style={{ display: tab === 'html' ? 'block' : 'none', height: '100%' }}>
-                  <CodeEditor
-                    language="html"
-                    yText={yHtml}
-                    awareness={awareness}
-                    onCursor={(pos) => {
-                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
-                      socket?.emit('cursor-move', { snippetId, language: 'html', position: pos });
-                    }}
-                    onChange={handleTyping}
-                  />
-                </div>
-                <div style={{ display: tab === 'css' ? 'block' : 'none', height: '100%' }}>
-                  <CodeEditor
-                    language="css"
-                    yText={yCss}
-                    awareness={awareness}
-                    onCursor={(pos) => {
-                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
-                      socket?.emit('cursor-move', { snippetId, language: 'css', position: pos });
-                    }}
-                    onChange={handleTyping}
-                  />
-                </div>
-                <div style={{ display: tab === 'js' ? 'block' : 'none', height: '100%' }}>
-                  <CodeEditor
-                    language="javascript"
-                    yText={yJs}
-                    awareness={awareness}
-                    onCursor={(pos) => {
-                      setCursorPosition({ line: pos.lineNumber, column: pos.column });
-                      socket?.emit('cursor-move', { snippetId, language: 'js', position: pos });
-                    }}
-                    onChange={handleTyping}
-                  />
-                </div>
-              </div>
-            </div>
-            <div
-              className={`ide-resize-handle${isResizing ? ' resizing' : ''}`}
-              onPointerDown={handleResizePointerDown}
-              onPointerMove={handleResizePointerMove}
-              onPointerUp={handleResizePointerUp}
-              onPointerCancel={handleResizePointerUp}
-              role="separator"
-              aria-orientation="vertical"
-              aria-valuenow={Math.round(previewWidth)}
-              aria-valuemin={28}
-              aria-valuemax={50}
-              title="Drag to resize preview"
+    <>
+      <IDEWorkspace
+        tabs={tabs}
+        activeTab={tab}
+        onTabChange={(tabId) => setTab(tabId as 'html' | 'css' | 'js')}
+        isConnected={status === 'connected'}
+        userCount={users.length}
+        onSave={() => doSave(false)}
+        onShare={doShare}
+        title={snippet?.title}
+        onRename={doRename}
+        preview={{ html: htmlText, css: cssText, js: jsText }}
+        status={{
+          isConnected: status === 'connected',
+          language: getLanguageName(tab),
+          cursorPosition,
+        }}
+      >
+        <div className="ide-typing-indicators">
+          {Object.values(typing[tab] || {}).filter((u: any) => u.id !== user?.id).slice(0, 3).map((u: any) => (
+            <span key={u.id} className="ide-typing-pill" style={{ borderColor: u.color, color: u.color }}>{u.name} typing…</span>
+          ))}
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <div style={{ display: tab === 'html' ? 'block' : 'none', height: '100%' }}>
+            <CodeEditor
+              language="html"
+              yText={yHtml}
+              awareness={awareness}
+              onCursor={(pos) => {
+                setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                socket?.emit('cursor-move', { snippetId, language: 'html', position: pos });
+              }}
+              onChange={handleTyping}
             />
-            <div className="ide-preview-panel" style={{ width: `${previewWidth}%` }}>
-              <div className="ide-preview-header">Live Preview</div>
-              <div className="ide-preview-content">
-                <LivePreview html={htmlText} css={cssText} js={jsText} />
-              </div>
-            </div>
+          </div>
+          <div style={{ display: tab === 'css' ? 'block' : 'none', height: '100%' }}>
+            <CodeEditor
+              language="css"
+              yText={yCss}
+              awareness={awareness}
+              onCursor={(pos) => {
+                setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                socket?.emit('cursor-move', { snippetId, language: 'css', position: pos });
+              }}
+              onChange={handleTyping}
+            />
+          </div>
+          <div style={{ display: tab === 'js' ? 'block' : 'none', height: '100%' }}>
+            <CodeEditor
+              language="javascript"
+              yText={yJs}
+              awareness={awareness}
+              onCursor={(pos) => {
+                setCursorPosition({ line: pos.lineNumber, column: pos.column });
+                socket?.emit('cursor-move', { snippetId, language: 'js', position: pos });
+              }}
+              onChange={handleTyping}
+            />
           </div>
         </div>
-      </div>
-      <IDEStatusBar
-        isConnected={status === 'connected'}
-        language={getLanguageName(tab)}
-        cursorPosition={cursorPosition}
-      />
+      </IDEWorkspace>
       {banner && (
         <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999, padding: 8 }}>
           <div className="banner">
@@ -415,6 +356,6 @@ export default function EditorPage() {
         cancelText="Cancel"
         isDanger={true}
       />
-    </div>
+    </>
   );
 }

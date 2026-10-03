@@ -1,21 +1,41 @@
-import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Explore from './pages/Explore';
+import Home from './pages/Home';
+import HowItWorks from './pages/HowItWorks';
 import Editor from './pages/Editor';
-import { useAuth } from './state/AuthContext';
+import TemporaryEditor from './pages/TemporaryEditor';
+import SessionGuard, { TEMP_EDITOR_PATH } from './components/session/SessionGuard';
 import { SnippetProvider, useSnippet } from './state/SnippetContext';
+import { ThemeProvider } from './state/ThemeContext';
+import { TemporarySessionProvider } from './state/TemporarySessionContext';
+import Navbar from './components/header/Navbar';
 
 function AppContent() {
-  const { user, logout } = useAuth();
-  const { snippetName, setSnippetName, renameSnippet } = useSnippet();
-  const [isLight, setIsLight] = useState(false);
+  const { snippetName, setSnippetName } = useSnippet();
   const location = useLocation();
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/register';
+  const isHomeRoute = location.pathname === '/';
+  const isBoardRoute = location.pathname === '/explore';
   const isEditorRoute = location.pathname.startsWith('/editor/');
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editName, setEditName] = useState('');
+
+  // Marketing + board surfaces: flat background and no app-wide cursor glow.
+  useEffect(() => {
+    const useSurface = isHomeRoute || isBoardRoute;
+    document.body.classList.toggle('home-body', useSurface);
+    return () => document.body.classList.remove('home-body');
+  }, [isHomeRoute, isBoardRoute]);
+
+  // In-app anchors (e.g. "How it works") need an explicit scroll target.
+  useEffect(() => {
+    if (!location.hash) return;
+    const el = document.getElementById(location.hash.slice(1));
+    if (!el) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  }, [location.pathname, location.hash]);
 
   // Clear snippet name when not on editor route
   useEffect(() => {
@@ -24,126 +44,31 @@ function AppContent() {
     }
   }, [isEditorRoute, snippetName, setSnippetName]);
 
-  const handleRename = async () => {
-    if (!editName.trim()) return;
-    try {
-      if (renameSnippet) {
-        await renameSnippet(editName.trim());
-      }
-      setSnippetName(editName.trim());
-      setIsEditingName(false);
-    } catch (err) {
-      console.error('Failed to rename snippet:', err);
-    }
-  };
-
-  const handleNameClick = () => {
-    if (user && snippetName) {
-      setEditName(snippetName);
-      setIsEditingName(true);
-    }
-  };
-
-  useEffect(() => {
-    const stored = localStorage.getItem('theme') || 'dark';
-    if (stored === 'light') {
-      document.documentElement.setAttribute('data-theme', 'light');
-      setIsLight(true);
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-      setIsLight(false);
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    if (isLight) {
-      document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('theme', 'dark');
-      setIsLight(false);
-    } else {
-      document.documentElement.setAttribute('data-theme', 'light');
-      localStorage.setItem('theme', 'light');
-      setIsLight(true);
-    }
-  };
   return (
-    <div className="app">
-      {!isAuthRoute && (
-        <header className="topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Link to="/explore" className="brand">Collab Coder</Link>
-            {snippetName && (
-              <>
-                <span style={{ color: 'var(--muted)', fontSize: '14px' }}>/</span>
-                {isEditingName ? (
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onBlur={handleRename}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRename();
-                      if (e.key === 'Escape') setIsEditingName(false);
-                    }}
-                    autoFocus
-                    style={{
-                      background: 'var(--control-bg)',
-                      border: '1px solid var(--accent)',
-                      color: 'var(--text)',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      outline: 'none'
-                    }}
-                  />
-                ) : (
-                  <span
-                    style={{
-                      color: 'var(--text)',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      cursor: user ? 'pointer' : 'default'
-                    }}
-                    onClick={handleNameClick}
-                    title={user ? 'Click to rename' : ''}
-                  >
-                    {snippetName}
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-          <div className="spacer" />
-          <button className="btn" onClick={toggleTheme}>{isLight ? 'Dark' : 'Light'}</button>
-          {user ? (
-            <>
-              <span className="user">{user.name}</span>
-              <button className="btn" onClick={logout}>Logout</button>
-            </>
-          ) : (
-            <>
-              <Link className="btn" to="/login">Login</Link>
-              <Link className="btn" to="/register">Register</Link>
-            </>
-          )}
-        </header>
-      )}
+    <div className={`app ${isAuthRoute ? 'auth-route' : 'app-surface'}`}>
+      {!isAuthRoute && <Navbar variant={isHomeRoute ? 'home' : 'app'} />}
       <Routes>
-        <Route path="/" element={<Navigate to="/explore" replace />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/explore" element={<Explore />} />
+        <Route path={TEMP_EDITOR_PATH} element={<TemporaryEditor />} />
         <Route path="/editor/:snippetId" element={<Editor />} />
       </Routes>
+      <SessionGuard />
     </div>
   );
 }
 
 export default function App() {
   return (
-    <SnippetProvider>
-      <AppContent />
-    </SnippetProvider>
+    <ThemeProvider>
+      <SnippetProvider>
+        <TemporarySessionProvider>
+          <AppContent />
+        </TemporarySessionProvider>
+      </SnippetProvider>
+    </ThemeProvider>
   );
 }

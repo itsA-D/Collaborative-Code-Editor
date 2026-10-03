@@ -13,7 +13,13 @@ router.post('/register', async (req, res) => {
   const existing = await User.findOne({ email });
   if (existing) return res.status(409).json({ message: 'Email already in use' });
   const hash = await bcrypt.hash(password, 10);
-  const user = await User.create({ name, email, password: hash });
+  let user;
+  try {
+    user = await User.create({ name, email, password: hash });
+  } catch (error: any) {
+    if (error?.code === 11000) return res.status(409).json({ message: 'Email already in use' });
+    throw error;
+  }
   const token = signJwt({ id: user._id.toString(), name: user.name, email: user.email });
   res.json({ token, user: { id: user._id.toString(), name: user.name, email: user.email } });
 });

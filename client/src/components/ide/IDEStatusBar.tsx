@@ -2,15 +2,22 @@ interface Props {
   isConnected: boolean;
   language: string;
   cursorPosition?: { line: number; column: number };
+  /** Replaces the Connected/Disconnected pill (e.g. a local draft session). */
+  statusLabel?: string;
+  statusTone?: 'default' | 'local';
 }
 
-export default function IDEStatusBar({ isConnected, language, cursorPosition }: Props) {
+export default function IDEStatusBar({ isConnected, language, cursorPosition, statusLabel, statusTone = 'default' }: Props) {
   return (
     <div className="ide-status-bar">
       <div className="ide-status-left">
         <div className="ide-status-item">
-          <div className={`ide-status-dot ${isConnected ? '' : 'disconnected'}`} />
-          <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
+          {statusLabel ? (
+            <span className={statusTone === 'local' ? 'ide-status-dot ide-status-dot--local' : 'ide-status-dot'} />
+          ) : (
+            <div className={`ide-status-dot ${isConnected ? '' : 'disconnected'}`} />
+          )}
+          <span>{statusLabel || (isConnected ? 'Connected' : 'Disconnected')}</span>
         </div>
         <div className="ide-status-item">
           <span>{language}</span>

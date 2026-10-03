@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Types } from 'mongoose';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import { requireAuth, optionalAuth, AuthRequest } from '../middleware/auth';
 import { Snippet } from '../models/Snippet';
 import { snippetCreateSchema, snippetUpdateSchema } from '../utils/validators';
 import { ydocUpdater, ydocs } from '../index';
@@ -8,6 +8,10 @@ import { redis } from '../db/redis';
 import * as Y from 'yjs';
 
 const router = Router();
+
+function parseSnippetId(id: string) {
+  return Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null;
+}
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const parsed = snippetCreateSchema.safeParse(req.body);
@@ -33,10 +37,21 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   res.status(201).json(snippet);
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', optionalAuth, async (req: AuthRequest, res) => {
   const { id } = req.params;
-  const snippet = await Snippet.findById(id);
+  const snippetId = parseSnippetId(id);
+  if (!snippetId) return res.status(400).json({ message: 'Invalid snippet ID' });
+  const snippet = await Snippet.findById(snippetId);
   if (!snippet) return res.status(404).json({ message: 'Snippet not found' });
+
+  // Authorization: only owner can access private snippets
+  // Public snippets are readable by anyone
+  if (!snippet.isPublic) {
+    if (!req.user || snippet.owner.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+  }
+
   snippet.views += 1;
   await snippet.save();
   res.json(snippet);
@@ -44,9 +59,11 @@ router.get('/:id', async (req, res) => {
 
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   const { id } = req.params;
+  const snippetId = parseSnippetId(id);
+  if (!snippetId) return res.status(400).json({ message: 'Invalid snippet ID' });
   const parsed = snippetUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Invalid input', errors: parsed.error.flatten() });
-  const snippet = await Snippet.findById(id);
+  const snippet = await Snippet.findById(snippetId);
   if (!snippet) return res.status(404).json({ message: 'Snippet not found' });
   if (snippet.owner.toString() !== req.user!.id) return res.status(403).json({ message: 'Forbidden' });
   Object.assign(snippet, parsed.data);
@@ -87,7 +104,9 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   const { id } = req.params;
-  const snippet = await Snippet.findById(id);
+  const snippetId = parseSnippetId(id);
+  if (!snippetId) return res.status(400).json({ message: 'Invalid snippet ID' });
+  const snippet = await Snippet.findById(snippetId);
   if (!snippet) return res.status(404).json({ message: 'Snippet not found' });
   if (snippet.owner.toString() !== req.user!.id) return res.status(403).json({ message: 'Forbidden' });
   await snippet.deleteOne();
@@ -96,8 +115,15 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/:id/fork', requireAuth, async (req: AuthRequest, res) => {
   const { id } = req.params;
-  const source = await Snippet.findById(id);
+  const snippetId = parseSnippetId(id);
+  if (!snippetId) return res.status(400).json({ message: 'Invalid snippet ID' });
+  const source = await Snippet.findById(snippetId);
   if (!source) return res.status(404).json({ message: 'Snippet not found' });
+  if (!source.isPublic) {
+    if (source.owner.toString() !== req.user!.id) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+  }
   const fork = await Snippet.create({
     title: source.title + ' (fork)',
     owner: req.user!.id,
@@ -112,8 +138,10 @@ router.post('/:id/fork', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.get('/', async (req, res) => {
-  const page = parseInt((req.query.page as string) || '1', 10);
-  const limit = parseInt((req.query.limit as string) || '10', 10);
+  const requestedPage = Number.parseInt((req.query.page as string) || '1', 10);
+  const requestedLimit = Number.parseInt((req.query.limit as string) || '10', 10);
+  const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
+  const limit = Number.isFinite(requestedLimit) ? Math.min(50, Math.max(1, requestedLimit)) : 10;
   const skip = (page - 1) * limit;
   const filter: any = { isPublic: true };
   if (req.query.owner) {

@@ -25,6 +25,13 @@ export const ydocUpdater = {
   update: (_docName: string, _updates: { html?: string; css?: string; js?: string }) => false
 };
 
+const configuredCorsOrigins = env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
+const corsOrigins = [
+  ...configuredCorsOrigins,
+  /^https?:\/\/localhost(?::\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(?::\d+)?$/,
+];
+
 async function bootstrap() {
   await connectMongo();
   await redis.ping();
@@ -49,7 +56,7 @@ async function bootstrap() {
     crossOriginEmbedderPolicy: false,
   }));
   app.use(cors({
-    origin: typeof env.CORS_ORIGIN === 'string' ? env.CORS_ORIGIN.split(',') : env.CORS_ORIGIN,
+    origin: corsOrigins,
     credentials: true,
   }));
   app.use(express.json({ limit: '1mb' }));
@@ -78,7 +85,7 @@ async function bootstrap() {
   const server = http.createServer(app);
   const io = new Server(server, {
     cors: {
-      origin: typeof env.CORS_ORIGIN === 'string' ? env.CORS_ORIGIN.split(',') : env.CORS_ORIGIN,
+      origin: corsOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     }

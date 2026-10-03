@@ -1,3 +1,5 @@
+import { useState, type ReactNode } from 'react';
+
 interface Tab {
   id: string;
   name: string;
@@ -14,9 +16,25 @@ interface Props {
   userCount?: number;
   onSave?: () => void;
   onShare?: () => void;
+  /** Leaves the workspace (temporary session): routed, so the guard intercepts it. */
+  onLeave?: () => void;
+  /** Current snippet title; when set with onRename, the title becomes editable. */
+  title?: string;
+  onRename?: (newTitle: string) => void;
+  /** Small status marker rendered before the connection pill. */
+  statusBadge?: ReactNode;
 }
 
-export default function IDETabs({ tabs, activeTab, onTabChange, onTabClose, isConnected, userCount, onSave, onShare }: Props) {
+export default function IDETabs({ tabs, activeTab, onTabChange, onTabClose, isConnected, userCount, onSave, onShare, onLeave, title, onRename, statusBadge }: Props) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(title ?? '');
+
+  const commitRename = () => {
+    const next = editTitle.trim();
+    if (next && next !== title && onRename) onRename(next);
+    setIsEditing(false);
+  };
+
   return (
     <div className="ide-tabs-container">
       <div className="ide-tabs-left">
@@ -43,6 +61,32 @@ export default function IDETabs({ tabs, activeTab, onTabChange, onTabClose, isCo
         ))}
       </div>
       <div className="ide-tabs-right">
+        {title !== undefined && onRename && (
+          isEditing ? (
+            <input
+              className="ide-title-input"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') { setEditTitle(title); setIsEditing(false); }
+              }}
+              autoFocus
+              aria-label="Snippet title"
+            />
+          ) : (
+            <button
+              type="button"
+              className="ide-title"
+              onClick={() => { setEditTitle(title); setIsEditing(true); }}
+              title="Click to rename"
+            >
+              {title}
+            </button>
+          )
+        )}
+        {statusBadge}
         {isConnected !== undefined && (
           <div className="ide-collab-status">
             <div className={`ide-status-dot ${isConnected ? '' : 'disconnected'}`} />
@@ -57,6 +101,11 @@ export default function IDETabs({ tabs, activeTab, onTabChange, onTabClose, isCo
         {onShare && (
           <button className="btn" onClick={onShare} style={{ padding: '4px 10px', fontSize: '11px' }}>
             Share
+          </button>
+        )}
+        {onLeave && (
+          <button className="btn" onClick={onLeave} style={{ padding: '4px 10px', fontSize: '11px' }}>
+            Leave
           </button>
         )}
       </div>

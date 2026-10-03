@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import AuthBrandPanel from '../components/AuthBrandPanel';
 import { useAuth } from '../state/AuthContext';
 
@@ -13,21 +14,37 @@ export default function Login() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!email.trim() || password.length < 8) {
+      setError('Enter a valid email and a password with at least 8 characters.');
+      return;
+    }
     try {
       await login(email, password);
       nav('/explore');
-    } catch (e: any) {
-      setError(e?.response?.data?.message || 'Login failed');
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        if (!error.response) {
+          setError('Cannot reach the server. Start the backend on http://localhost:4000 and try again.');
+        } else {
+          setError(error.response.data?.message || `Login failed (${error.response.status}).`);
+        }
+      } else {
+        setError('Login failed. Please try again.');
+      }
     }
   };
 
   return (
     <div className="auth-shell">
       <div className="auth-frame">
-        <AuthBrandPanel footerText="Your secure platform to code together, I guess." />
+        <AuthBrandPanel footerText="Your secure platform to code together, I guess..." />
 
         <section className="auth-panel auth-panel-form auth-panel-form-no-top">
           <div className="auth-form-wrap">
+            <Link className="auth-back-link" to="/">
+              <span className="auth-back-link__icon" aria-hidden="true">←</span>
+              <span>Back to home</span>
+            </Link>
             <h1 className="auth-title">Login</h1>
             {error && <div className="banner auth-banner-error">{error}</div>}
             <form className="auth-form-grid" onSubmit={submit}>
