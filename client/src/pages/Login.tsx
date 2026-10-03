@@ -9,6 +9,7 @@ export default function Login() {
   const nav = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
 
   const submit = async (e: React.FormEvent) => {
@@ -19,7 +20,7 @@ export default function Login() {
       return;
     }
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
       nav('/explore');
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
@@ -70,7 +71,7 @@ export default function Login() {
               </div>
               <div className="auth-meta-row">
                 <label className="auth-checkline">
-                  <input type="checkbox" />
+                  <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
                   <span>Remember me</span>
                 </label>
                 <span className="auth-muted-link">Forgot password?</span>

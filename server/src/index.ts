@@ -15,14 +15,96 @@ import snippetRoutes from './routes/snippets';
 import { apiLimiter } from './middleware/rateLimit';
 import { verifyJwt } from './utils/jwt';
 import { initSocket } from './routes/socket';
-import { setupWSConnection, getYDoc } from 'y-websocket/bin/utils';
 import * as Y from 'yjs';
 import { Snippet } from './models/Snippet';
 
-// Global store for Yjs docs - accessible from routes
-export const ydocs = new Map<string, Y.Doc>();
+// Global store for Yjs docs - synchronized with y-websocket internal state
+const { docs, getYDoc, setupWSConnection } = require('y-websocket/bin/utils');
+export const ydocs = docs as Map<string, Y.Doc>;
+export { getYDoc, setupWSConnection };
+
+const loadingDocs = new Map<string, Promise<Y.Doc>>();
+const PERSIST_INTERVAL = 30000; // 30 seconds
+const loadedDocs = new Set<string>(); // Keep track of which docs have been initialized from DB/Redis
+
+// Simple diff-based update to preserve concurrent CRDT edits
+function applyDiffUpdate(yText: Y.Text, newContent: string) {
+  const currentContent = yText.toString();
+  
+  // If content is identical, no update needed
+  if (currentContent === newContent) return;
+  
+  // Compute minimal diff using longest common subsequence approach
+  const diff = computeDiff(currentContent, newContent);
+  
+  // Apply diff in reverse order (from end to start) to preserve indices
+  for (let i = diff.length - 1; i >= 0; i--) {
+    const op = diff[i];
+    if (op.type === 'delete' && op.length !== undefined) {
+      yText.delete(op.index, op.length);
+    } else if (op.type === 'insert' && op.content !== undefined) {
+      yText.insert(op.index, op.content);
+    }
+  }
+}
+
+// Compute minimal diff between two strings
+function computeDiff(oldStr: string, newStr: string): Array<{ type: 'delete' | 'insert', index: number, length?: number, content?: string }> {
+  const operations: Array<{ type: 'delete' | 'insert', index: number, length?: number, content?: string }> = [];
+  
+  // Find the longest common prefix
+  let prefixLen = 0;
+  while (prefixLen < oldStr.length && prefixLen < newStr.length && oldStr[prefixLen] === newStr[prefixLen]) {
+    prefixLen++;
+  }
+  
+  // Find the longest common suffix
+  let suffixLen = 0;
+  while (suffixLen < oldStr.length - prefixLen && suffixLen < newStr.length - prefixLen &&
+         oldStr[oldStr.length - 1 - suffixLen] === newStr[newStr.length - 1 - suffixLen]) {
+    suffixLen++;
+  }
+  
+  // Delete the middle part from old string
+  const deleteStart = prefixLen;
+  const deleteLength = oldStr.length - prefixLen - suffixLen;
+  if (deleteLength > 0) {
+    operations.push({ type: 'delete', index: deleteStart, length: deleteLength });
+  }
+  
+  // Insert the middle part from new string
+  const insertContent = newStr.slice(prefixLen, newStr.length - suffixLen);
+  if (insertContent.length > 0) {
+    operations.push({ type: 'insert', index: prefixLen, content: insertContent });
+  }
+  
+  return operations;
+}
+
 export const ydocUpdater = {
-  update: (_docName: string, _updates: { html?: string; css?: string; js?: string }) => false
+  update: async (docName: string, updates: { html?: string; css?: string; js?: string }) => {
+    const doc = await getOrLoadDoc(docName);
+    if (!doc) return false;
+
+    doc.transact(() => {
+      if (updates.html !== undefined) {
+        const yText = doc.getText('html');
+        applyDiffUpdate(yText, updates.html);
+      }
+      if (updates.css !== undefined) {
+        const yText = doc.getText('css');
+        applyDiffUpdate(yText, updates.css);
+      }
+      if (updates.js !== undefined) {
+        const yText = doc.getText('js');
+        applyDiffUpdate(yText, updates.js);
+      }
+    });
+
+    // Also persist to Redis immediately
+    await persistDoc(docName);
+    return true;
+  }
 };
 
 const configuredCorsOrigins = env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -110,60 +192,11 @@ async function bootstrap() {
 
   // Yjs WebSocket server for CRDT collaboration
   const yjsPort = env.YJS_PORT || 1234;
-  const yjsWss = new WebSocketServer({ port: yjsPort });
-
-  const PERSIST_INTERVAL = 30000; // 30 seconds
-
-  // Update exported ydocUpdater when bootstrap runs
-  ydocUpdater.update = function (docName: string, updates: { html?: string; css?: string; js?: string }) {
-    const doc = ydocs.get(docName);
-    if (!doc) return false;
-
-    if (updates.html !== undefined) {
-      const yText = doc.getText('html');
-      yText.delete(0, yText.length);
-      yText.insert(0, updates.html);
-    }
-    if (updates.css !== undefined) {
-      const yText = doc.getText('css');
-      yText.delete(0, yText.length);
-      yText.insert(0, updates.css);
-    }
-    if (updates.js !== undefined) {
-      const yText = doc.getText('js');
-      yText.delete(0, yText.length);
-      yText.insert(0, updates.js);
-    }
-
-    // Also persist to Redis immediately
-    persistDoc(docName);
-    return true;
-  }
-
-  // Persist Yjs docs to Redis AND MongoDB
-  async function persistDoc(docName: string) {
-    const doc = ydocs.get(docName);
-    if (!doc) return;
-
-    // 1. Save binary state to Redis for fast real-time sync
-    const state = Y.encodeStateAsUpdate(doc);
-    await redis.set(`yjs:${docName}`, Buffer.from(state));
-
-    // 2. Save clear text to MongoDB so the rest of the app (REST API, Explore) can read it
-    if (docName.startsWith('snippet-')) {
-      const snippetId = docName.replace('snippet-', '');
-      try {
-        await Snippet.findByIdAndUpdate(snippetId, {
-          html: doc.getText('html').toString(),
-          css: doc.getText('css').toString(),
-          js: doc.getText('js').toString(),
-          lastSavedAt: new Date()
-        });
-      } catch (err) {
-        console.error(`Autosave to MongoDB failed for ${snippetId}:`, err);
-      }
-    }
-  }
+  const yjsWss = new WebSocketServer({ 
+    port: yjsPort,
+    clientTracking: true,
+    perMessageDeflate: false // Disable compression for CRDT binary data
+  });
 
   // Autosave all active docs periodically
   setInterval(async () => {
@@ -180,9 +213,17 @@ async function bootstrap() {
     const url = req.url || '';
     const docName = url.split('/').pop()?.split('?')[0] || 'default';
     if (!docName || docName === 'default') {
-      conn.close();
+      conn.close(1008, 'Invalid document name');
       return;
     }
+
+    // Set connection timeout
+    const connectionTimeout = setTimeout(() => {
+      if (conn.readyState === conn.OPEN) {
+        console.warn(`Connection timeout for ${docName}`);
+        conn.close(1000, 'Connection timeout');
+      }
+    }, 30000); // 30 second timeout
 
     try {
       // Basic jwt auth & snippet authorization for WS connection
@@ -202,57 +243,35 @@ async function bootstrap() {
       }
     } catch (err) {
       console.error(`Yjs Websocket Auth Failed for ${docName}:`, (err as any).message);
-      conn.close();
+      clearTimeout(connectionTimeout);
+      conn.close(1008, (err as any).message || 'Authentication failed');
       return;
     }
 
-    // Get or create Yjs document
-    let doc = ydocs.get(docName);
+    clearTimeout(connectionTimeout);
+
+    // Get or create Yjs document via safe loader
+    const doc = await getOrLoadDoc(docName);
     if (!doc) {
-      doc = new Y.Doc();
-      ydocs.set(docName, doc);
-
-      // Load persisted state from Redis
-      try {
-        const saved = await redis.getBuffer(`yjs:${docName}`);
-        if (saved && saved.length > 0) {
-          Y.applyUpdate(doc, saved);
-          console.log(`Loaded Yjs state for ${docName} from Redis`);
-        } else {
-          // Seed from MongoDB if no Redis state
-          if (docName.startsWith('snippet-')) {
-            const snippetId = docName.replace('snippet-', '');
-            const snip = await Snippet.findById(snippetId);
-            if (snip) {
-              doc.getText('html').insert(0, snip.html || '');
-              doc.getText('css').insert(0, snip.css || '');
-              doc.getText('js').insert(0, snip.js || '');
-              console.log(`Seeded Yjs doc ${docName} from MongoDB`);
-            }
-          }
-        }
-      } catch (err) {
-        console.error(`Failed to load Yjs state for ${docName}:`, err);
-      }
-
-      // Broadcast local updates to other nodes
-      doc.on('update', (update, origin) => {
-        if (origin !== 'redis') {
-          pubClient.publish(`yjs-update:${docName}`, Buffer.from(update).toString('base64'));
-        }
-      });
+      conn.close(1011, 'Failed to load document');
+      return;
     }
 
     // Track doc reference while client connected
     let connected = true;
-    conn.on('close', async () => {
+    conn.on('close', async (code, reason) => {
       connected = false;
+      console.log(`Yjs WebSocket closed for ${docName}: code=${code}, reason=${reason}`);
       // Persist on disconnect
       try {
         await persistDoc(docName);
       } catch (err) {
         console.error(`Failed to persist Yjs doc ${docName} on disconnect:`, err);
       }
+    });
+
+    conn.on('error', (err) => {
+      console.error(`Yjs WebSocket error for ${docName}:`, err);
     });
 
     // Use y-websocket's setupWSConnection
