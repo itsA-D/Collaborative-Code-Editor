@@ -48,8 +48,8 @@ export default function EditorPage() {
     let wsUrl = (import.meta as any).env.VITE_YJS_URL;
     if (!wsUrl) {
       wsUrl = window.location.protocol === 'https:'
-        ? `wss://${window.location.hostname}:1234`
-        : 'ws://localhost:1234';
+        ? 'wss://collaborative-editor-backend-472m.onrender.com/yjs'
+        : 'ws://localhost:4000/yjs';
     }
     const wsProvider = new WebsocketProvider(wsUrl, `snippet-${snippetId}?token=${token}`, ydoc);
 
