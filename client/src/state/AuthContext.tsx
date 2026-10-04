@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import api from '../api/client';
+import { analytics, identifyUser, resetAnalyticsIdentity } from '../analytics/events';
 
 type User = { id: string; name: string; email: string; color?: string } | null;
 
@@ -20,12 +21,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const t = localStorage.getItem('token') || sessionStorage.getItem('token');
     const u = localStorage.getItem('user') || sessionStorage.getItem('user');
-    if (t && u) { setToken(t); setUser(JSON.parse(u)); }
+    if (t && u) {
+      setToken(t);
+      setUser(JSON.parse(u));
+      identifyUser(JSON.parse(u).id);
+    }
   }, []);
 
   const login = async (email: string, password: string, rememberMe: boolean = true) => {
     const res = await api.post('/api/auth/login', { email, password });
     setToken(res.data.token); setUser(res.data.user);
+    identifyUser(res.data.user.id);
+    analytics.loginCompleted();
     if (rememberMe) {
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
@@ -38,12 +45,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (name: string, email: string, password: string) => {
     const res = await api.post('/api/auth/register', { name, email, password });
     setToken(res.data.token); setUser(res.data.user);
+    identifyUser(res.data.user.id);
+    analytics.loginCompleted();
     localStorage.setItem('token', res.data.token);
     localStorage.setItem('user', JSON.stringify(res.data.user));
   };
 
   const logout = () => {
     setUser(null); setToken(null);
+    analytics.logout();
+    resetAnalyticsIdentity();
     localStorage.removeItem('token'); localStorage.removeItem('user');
     sessionStorage.removeItem('token'); sessionStorage.removeItem('user');
   };

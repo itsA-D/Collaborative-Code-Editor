@@ -10,6 +10,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
+    "posthog-js": "^1.435.8",
     "yjs": "^13.6.31"
   }
 }

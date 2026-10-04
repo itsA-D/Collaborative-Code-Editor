@@ -73,7 +73,7 @@ export default function SaveSessionModal({ open, saving, error, canSave, onCance
           </label>
           <input
             id="session-snippet-title"
-            className="home-field__input"
+            className="home-field__input ph-no-capture"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             onBlur={() => setTouched(true)}

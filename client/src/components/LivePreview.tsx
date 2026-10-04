@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PreviewThemeToggle, { type PreviewTheme } from './preview/PreviewThemeToggle';
+import { analytics } from '../analytics/events';
 
 const THEME_MESSAGE = 'PREVIEW_THEME_CHANGE';
 
@@ -16,13 +17,22 @@ function buildSrcDoc(html: string, css: string, js: string, theme: PreviewTheme)
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${css}</style>${previewThemeBridge(theme, nonce)}</head><body>${html}<script nonce="${nonce}">(function(){try{${js}\n}catch(e){console.error(e)}})()<\/script></body></html>`;
 }
 
-export default function LivePreview({ html, css, js }: { html: string; css: string; js: string }) {
+export default function LivePreview({ html, css, js, language }: { html: string; css: string; js: string; language?: string }) {
   // Local-only preference: independent from the app theme, editor theme and the
   // collaborative document, and never persisted to the server.
   const [previewTheme, setPreviewTheme] = useState<PreviewTheme>('dark');
   const [srcDoc, setSrcDoc] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const themeRef = useRef<PreviewTheme>('dark');
+  const languageRef = useRef(language);
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
+
+  const reportRun = useMemo(
+    () => analytics.runExecutedThrottled(() => ({ language: languageRef.current })),
+    []
+  );
 
   const postTheme = useCallback((theme: PreviewTheme) => {
     iframeRef.current?.contentWindow?.postMessage({ type: THEME_MESSAGE, theme }, '*');
@@ -42,7 +52,10 @@ export default function LivePreview({ html, css, js }: { html: string; css: stri
   // never re-created by the toggle itself.
   const handleFrameLoad = useCallback(() => {
     postTheme(themeRef.current);
-  }, [postTheme]);
+    // This load is the code actually executing, which is what the IDE reports
+    // as a run (there is no Run button). Throttled in analytics.
+    reportRun();
+  }, [postTheme, reportRun]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -58,7 +71,7 @@ export default function LivePreview({ html, css, js }: { html: string; css: stri
         <span className="ide-preview-header__label">Live Preview</span>
         <PreviewThemeToggle theme={previewTheme} onToggle={handleToggleTheme} />
       </div>
-      <div className="ide-preview-content">
+      <div className="ide-preview-content ph-no-capture">
         <iframe
           ref={iframeRef}
           className="preview"

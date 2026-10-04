@@ -4,6 +4,7 @@ import api from '../api/client';
 import Modal from '../components/Modal';
 import { useAuth } from '../state/AuthContext';
 import { useTemporarySession } from '../state/TemporarySessionContext';
+import { analytics } from '../analytics/events';
 
 const PER_PAGE = 12;
 
@@ -89,6 +90,7 @@ export default function Explore() {
 
   /** Same temporary-session entry point as the homepage. */
   function startNew() {
+    analytics.startCodingClicked('explore');
     if (!user) {
       nav('/login');
       return;
@@ -103,6 +105,7 @@ export default function Explore() {
     setActionError('');
     try {
       await api.delete(`/api/snippets/${deleteTarget.id}`);
+      analytics.snippetDeleted({ authenticated: !!user, source: 'explore' });
       setDeleteTarget(null);
       setDeleting(false);
       load(page);

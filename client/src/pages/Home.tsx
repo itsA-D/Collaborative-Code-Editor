@@ -9,6 +9,7 @@ import {
 } from '../components/home';
 import { useAuth } from '../state/AuthContext';
 import { useTemporarySession } from '../state/TemporarySessionContext';
+import { analytics } from '../analytics/events';
 
 export default function HomePage() {
   const { user, logout } = useAuth();
@@ -21,6 +22,7 @@ export default function HomePage() {
    * the final CTA.
    */
   const startCoding = useCallback(() => {
+    analytics.startCodingClicked('homepage');
     startSession();
     nav('/editor/temp');
   }, [nav, startSession]);

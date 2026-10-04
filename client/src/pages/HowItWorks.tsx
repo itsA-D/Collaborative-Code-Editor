@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { useTemporarySession } from '../state/TemporarySessionContext';
 import { ArrowRightIcon } from '../components/Icons';
+import { analytics } from '../analytics/events';
 import '../components/home/home.css';
 import './how-it-works.css';
 
@@ -12,9 +13,14 @@ export default function HowItWorksPage() {
   const [hasAtmosphere, setHasAtmosphere] = useState(false);
 
   const startCoding = () => {
+    analytics.startCodingClicked('how_it_works');
     startSession();
     nav('/editor/temp');
   };
+
+  useEffect(() => {
+    analytics.howItWorksViewed();
+  }, []);
 
   useEffect(() => {
     const el = atmosphereRef.current;

@@ -2283,3 +2283,116 @@ html[data-theme="light"] .autosave-indicator {
   white-space: nowrap;
   border: 0;
 }
+
+/* Remote Collaborator Cursors & Selections (y-monaco) */
+.yRemoteSelection {
+  position: relative;
+  border-left: 2px solid;
+  margin-left: -1px;
+}
+
+.yRemoteSelectionHead {
+  position: absolute;
+  width: 2px;
+  height: 1.2em;
+  top: 0;
+  left: -1px;
+  animation: yRemoteCursorBlink 1s ease-in-out infinite;
+}
+
+@keyframes yRemoteCursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.yRemoteSelectionHead::after {
+  content: attr(data-name);
+  position: absolute;
+  top: -1.4em;
+  left: -2px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  border-radius: 3px;
+  color: #fff;
+  background: currentColor;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  transform: translateX(-50%);
+}
+
+html[data-theme="light"] .yRemoteSelectionHead::after {
+  color: #111;
+}
+
+/* Selection highlight for remote users - low opacity */
+.yRemoteSelection > .yRemoteSelectionContent {
+  opacity: 0.15;
+}
+
+/* Ensure remote cursors don't interfere with local selection */
+.monaco-editor .yRemoteSelection {
+  pointer-events: none;
+}
+
+/* Collaborator avatars in tabs */
+.ide-collaborators {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.collaborator-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  margin-left: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.collaborator-avatar:first-child {
+  margin-left: 0;
+}
+
+.collaborator-avatar:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 8px currentColor;
+  z-index: 10;
+}
+
+.collaborator-more {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  margin-left: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* Popover for UserPresence */
+.presence-popover {
+  animation: popoverIn 0.15s ease-out;
+}
+
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

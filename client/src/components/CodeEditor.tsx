@@ -120,7 +120,7 @@ export default function CodeEditor({ language, yText, awareness, readOnly, onCur
   }, [yText, awareness, isEditorReady]);
 
   return (
-    <div style={{ height: '100%' }}>
+    <div className="ide-code-panel ph-no-capture" style={{ height: '100%' }}>
       <Editor
         theme={theme}
         defaultLanguage={language}

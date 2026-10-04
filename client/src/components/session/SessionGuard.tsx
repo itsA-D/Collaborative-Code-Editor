@@ -5,6 +5,7 @@ import { useAuth } from '../../state/AuthContext';
 import { useTemporarySession } from '../../state/TemporarySessionContext';
 import LeaveSessionModal from './LeaveSessionModal';
 import SaveSessionModal from './SaveSessionModal';
+import { analytics } from '../../analytics/events';
 
 type SaveRequest = { title: string } | null;
 
@@ -73,6 +74,8 @@ export default function SessionGuard() {
           js: files.js,
           isPublic: true,
         });
+        analytics.snippetCreated({ authenticated: !!user, source: 'temporary_session' });
+        analytics.snippetSaved({ authenticated: !!user, source: 'temporary_session' });
         markSaved();
         setSaveRequest(null);
         setSaving(false);
@@ -82,7 +85,7 @@ export default function SessionGuard() {
         setSaveError(e?.response?.data?.message || 'Could not save this snippet.');
       }
     },
-    [files, markSaved, continueNavigation]
+    [files, markSaved, continueNavigation, user]
   );
 
   const handleDiscard = useCallback(() => {

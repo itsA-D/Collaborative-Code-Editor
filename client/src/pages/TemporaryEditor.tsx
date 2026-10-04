@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CodeEditor from '../components/CodeEditor';
 import { IDEWorkspace } from '../components/ide';
 import { SAVE_REQUEST_EVENT } from '../components/session/SessionGuard';
 import { useAuth } from '../state/AuthContext';
 import { useTemporarySession, type TempFileKey } from '../state/TemporarySessionContext';
+import { analytics } from '../analytics/events';
 
 const TABS = [
   { id: 'html', name: 'index.html', type: 'html' as const, icon: '🌐' },
@@ -34,10 +35,32 @@ export default function TemporaryEditor() {
     if (!active) startSession();
   }, [active, startSession]);
 
+  useEffect(() => {
+    analytics.ideOpened({ authenticated: !!user, language: getLanguageName(activeFile) });
+  }, [user]);
+
   // Stable identity: this page re-renders on every keystroke.
   const handleCursor = useCallback((pos: { lineNumber: number; column: number }) => {
     setCursorPosition({ line: pos.lineNumber, column: pos.column });
   }, []);
+
+  const reportEdit = useMemo(
+    () =>
+      analytics.codeEditedThrottled(() => ({
+        language: activeFile === 'js' ? 'javascript' : activeFile,
+        editor: 'temporary_ide',
+        collaborative: false,
+      })),
+    []
+  );
+
+  const handleLocalChange = useCallback(
+    (key: TempFileKey) => (value: string) => {
+      reportEdit();
+      setFile(key, value);
+    },
+    [reportEdit, setFile]
+  );
 
   function requestSave() {
     window.dispatchEvent(new CustomEvent(SAVE_REQUEST_EVENT));
@@ -88,7 +111,7 @@ export default function TemporaryEditor() {
                 yText={null}
                 awareness={null}
                 defaultValue={files[key]}
-                onLocalChange={(value) => setFile(key, value)}
+                onLocalChange={handleLocalChange(key)}
                 onCursor={handleCursor}
               />
             </div>

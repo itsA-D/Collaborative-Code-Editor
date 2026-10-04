@@ -48,7 +48,7 @@ export default function Register() {
             </Link>
             <h1 className="auth-title">Create Account</h1>
             {error && <div className="banner auth-banner-error">{error}</div>}
-            <form className="auth-form-grid auth-form-grid-stack" onSubmit={submit}>
+            <form className="auth-form-grid auth-form-grid-stack ph-no-capture" onSubmit={submit}>
               <div className="auth-field auth-field-full">
                 <label>Name</label>
                 <input
