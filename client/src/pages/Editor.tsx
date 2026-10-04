@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
@@ -8,24 +8,80 @@ import Modal from '../components/Modal';
 import { IDEWorkspace } from '../components/ide';
 import { useAuth } from '../state/AuthContext';
 import { useSnippet } from '../state/SnippetContext';
-import { useSocket } from '../hooks/useSocket';
 import api from '../api/client';
+import { analytics } from '../analytics/events';
+
+const USER_COLORS = [
+  '#8B5CF6',
+  '#22C55E',
+  '#38BDF8',
+  '#F59E0B',
+  '#F43F5E',
+  '#14B8A6',
+  '#A855F7',
+  '#FB7185',
+];
+
+function getColorForUser(userId: string): string {
+  let h = 0;
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) >>> 0;
+  return USER_COLORS[h % USER_COLORS.length];
+}
+
+interface Collaborator {
+  clientId: number;
+  user: { id: string; name: string; color: string };
+  cursor?: { anchor: number; head: number };
+  activeFile?: string;
+  status?: string;
+}
 
 export default function EditorPage() {
   const { snippetId } = useParams();
   const { token, user } = useAuth();
   const { setSnippetName, registerRenameHandler } = useSnippet();
-  const { socket, status } = useSocket(token);
   const [snippet, setSnippet] = useState<any>(null);
   const [tab, setTab] = useState<'html' | 'css' | 'js'>('html');
-  const [users, setUsers] = useState<any[]>([]);
   const [banner, setBanner] = useState<string | null>(null);
   const [showAutosaveToast, setShowAutosaveToast] = useState(false);
-  const [typing, setTyping] = useState<{ [K in 'html' | 'css' | 'js']: Record<string, { id: string; name: string; color: string; ts: number }> }>({ html: {}, css: {}, js: {} });
   const [deleteModal, setDeleteModal] = useState(false);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const nav = useNavigate();
   const hasSetNameRef = useRef(false);
   const doRenameRef = useRef<(newTitle: string) => Promise<void>>();
+  const localClientIdRef = useRef<number | null>(null);
+  const tabRef = useRef(tab);
+  const collaboratorsCountRef = useRef(0);
+
+  tabRef.current = tab;
+
+  // Reported at most once per 15s so continuous typing yields a single signal.
+  const reportLocalEdit = useMemo(
+    () =>
+      analytics.codeEditedThrottled(() => ({
+        language: tabRef.current === 'js' ? 'javascript' : tabRef.current,
+        editor: 'snippet_ide',
+        collaborative: true,
+      })),
+    []
+  );
+
+  const reportCollaboration = useMemo(() => {
+    let sent = false;
+    return () => {
+      if (sent) return;
+      sent = true;
+      const language = tabRef.current === 'js' ? 'javascript' : tabRef.current;
+      // Others already in the room means this client joined an existing session.
+      if (collaboratorsCountRef.current > 0) analytics.collaborationJoined({ language });
+      else analytics.collaborationStarted({ language });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!snippetId || snippetId === 'temp') return;
+    analytics.snippetOpened({ authenticated: !!user });
+  }, [snippetId, user]);
 
   // Yjs state
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -57,44 +113,85 @@ export default function EditorPage() {
     providerRef.current = wsProvider;
     setIsYjsReady(true);
 
+    // Store local client ID for filtering self
+    localClientIdRef.current = wsProvider.awareness.clientID;
+
     // Set user info in awareness
-    const userColors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#926fe4', '#ec4899', '#14b8a6', '#84cc16'];
-    const colorIdx = (user?.id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % userColors.length;
-    const color = userColors[colorIdx];
+    const color = getColorForUser(user?.id || 'anonymous');
     wsProvider.awareness.setLocalStateField('user', {
+      id: user?.id || 'anonymous',
       name: user?.name || 'Anonymous',
       color,
     });
 
+    // Subscribe to awareness changes
+    const awareness = wsProvider.awareness;
+    const onAwarenessChange = () => {
+      const states = awareness.getStates();
+      const collabs: Collaborator[] = [];
+      states.forEach((state, clientId) => {
+        if (clientId === localClientIdRef.current) return;
+        if (state.user) {
+          collabs.push({
+            clientId,
+            user: state.user,
+            cursor: state.cursor,
+            activeFile: state.activeFile,
+            status: state.status,
+          });
+        }
+      });
+      setCollaborators(collabs);
+      collaboratorsCountRef.current = collabs.length;
+    };
+
+    awareness.on('change', onAwarenessChange);
+    // Initial sync
+    onAwarenessChange();
+
     // Subscribe to Yjs updates for preview
-    const updateHandler = () => {
+    const updateHandler = (_update?: Uint8Array, origin?: unknown) => {
+      // Remote traffic arrives with the provider as its origin, so this cleanly
+      // separates the user's own typing from collaborators' edits.
+      if (origin !== wsProvider) reportLocalEdit();
       setHtmlText(ydoc.getText('html').toString());
       setCssText(ydoc.getText('css').toString());
       setJsText(ydoc.getText('js').toString());
     };
     ydoc.on('update', updateHandler);
+    updateHandler(undefined, wsProvider);
 
-    // Initial text load
-    updateHandler();
+    // Report collaboration once the socket is actually live.
+    wsProvider.on('status', ({ status }: { status: string }) => {
+      if (status === 'connected') reportCollaboration();
+    });
 
     return () => {
+      awareness.off('change', onAwarenessChange);
       ydoc.off('update', updateHandler);
       wsProvider.destroy();
       ydoc.destroy();
       setIsYjsReady(false);
+      setCollaborators([]);
     };
-  }, [snippetId, token]);
+  }, [snippetId, token, user?.id, user?.name, reportLocalEdit, reportCollaboration]);
+
+  // Update awareness when active tab changes
+  useEffect(() => {
+    const awareness = providerRef.current?.awareness;
+    if (awareness) {
+      const tabNames: Record<string, string> = { html: 'index.html', css: 'styles.css', js: 'script.js' };
+      awareness.setLocalStateField('activeFile', tabNames[tab]);
+    }
+  }, [tab]);
 
   // load snippet via REST for metadata
   useEffect(() => {
-    // Reset the flag when snippetId changes
     hasSetNameRef.current = false;
-
     (async () => {
       try {
         const res = await api.get(`/api/snippets/${snippetId}`);
         setSnippet(res.data);
-        // Only set snippet name if not already set (to avoid overwriting renames)
         if (!hasSetNameRef.current) {
           setSnippetName(res.data.title || res.data.name || 'new snippet');
           hasSetNameRef.current = true;
@@ -102,49 +199,6 @@ export default function EditorPage() {
       } catch { }
     })();
   }, [snippetId, setSnippetName]);
-
-  // socket events for presence (still use socket.io for users list)
-  useEffect(() => {
-    if (!socket || !snippetId) return;
-    socket.emit('join-snippet', { snippetId });
-
-    const onActive = (u: any[]) => setUsers(u);
-    const onJoined = (_: any) => { };
-    const onLeft = (_: any) => { };
-
-    const onTyping = (p: any) => {
-      const { userId, name, language, ts } = p || {};
-      if (!userId || !language) return;
-      const u = users.find(x => x.id === userId);
-      const color = u?.color || 'var(--accent)';
-      setTyping(prev => ({
-        ...prev,
-        [language]: { ...prev[language as 'html' | 'css' | 'js'], [userId]: { id: userId, name, color, ts: ts || Date.now() } }
-      }));
-      setTimeout(() => {
-        setTyping(prev => {
-          const next = { html: { ...prev.html }, css: { ...prev.css }, js: { ...prev.js } } as typeof prev;
-          const map = { ...(next as any)[language] };
-          delete map[userId];
-          (next as any)[language] = map;
-          return next;
-        });
-      }, 1600);
-    };
-
-    socket.on('active-users', onActive);
-    socket.on('user-joined', onJoined);
-    socket.on('user-left', onLeft);
-    socket.on('user-typing', onTyping);
-
-    return () => {
-      socket.emit('leave-snippet', { snippetId });
-      socket.off('active-users', onActive);
-      socket.off('user-joined', onJoined);
-      socket.off('user-left', onLeft);
-      socket.off('user-typing', onTyping);
-    };
-  }, [socket, snippetId]);
 
   // Autosave and Ctrl+S handler
   useEffect(() => {
@@ -161,9 +215,7 @@ export default function EditorPage() {
   // Autosave every 10 seconds
   useEffect(() => {
     if (!snippetId || !user) return;
-    const interval = setInterval(() => {
-      doSave(true);
-    }, 10000);
+    const interval = setInterval(() => doSave(true), 10000);
     return () => clearInterval(interval);
   }, [snippetId, user]);
 
@@ -183,6 +235,7 @@ export default function EditorPage() {
         js: doc.getText('js').toString(),
       });
       if (!isAuto) {
+        analytics.snippetSaved({ authenticated: !!user, source: 'ide' });
         setBanner('Saved');
         setTimeout(() => setBanner(null), 1500);
       }
@@ -209,22 +262,18 @@ export default function EditorPage() {
     try {
       await api.put(`/api/snippets/${snippetId}`, { title: newTitle });
       setSnippet((prev: any) => ({ ...prev, title: newTitle }));
-      setSnippetName(newTitle); // Update context to sync with top bar
+      setSnippetName(newTitle);
       setBanner('Renamed'); setTimeout(() => setBanner(null), 1500);
     } catch (e: any) {
       setBanner(e?.response?.data?.message || 'Rename failed');
     }
   }
 
-  // Store doRename in ref
   doRenameRef.current = doRename;
 
-  // Register rename handler for when snippet is renamed from top bar
   useEffect(() => {
     registerRenameHandler(async (newName: string) => {
-      if (doRenameRef.current) {
-        await doRenameRef.current(newName);
-      }
+      if (doRenameRef.current) await doRenameRef.current(newName);
     });
   }, [registerRenameHandler]);
 
@@ -232,16 +281,11 @@ export default function EditorPage() {
     if (!user) { nav('/login'); return; }
     try {
       await api.delete(`/api/snippets/${snippetId}`);
+      analytics.snippetDeleted({ authenticated: !!user, source: 'ide' });
       nav('/explore');
     } catch (e: any) {
       setBanner(e?.response?.data?.message || 'Delete failed');
     }
-  }
-
-  // Handle typing indicator via socket (separate from Yjs)
-  function handleTyping() {
-    if (!socket || !snippetId) return;
-    socket.emit('typing', { snippetId, language: tab });
   }
 
   // Get current Yjs text and awareness for active tab
@@ -252,10 +296,9 @@ export default function EditorPage() {
   const tabs = [
     { id: 'html', name: 'index.html', type: 'html' as const, icon: '🌐' },
     { id: 'css', name: 'styles.css', type: 'css' as const, icon: '🎨' },
-    { id: 'js', name: 'script.js', type: 'js' as const, icon: '📜' },
+    { id: 'js', name: 'script.js', type: 'js' as const, icon: '🎯' },
   ];
 
-  // Cursor position state for status bar
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
 
   const getLanguageName = (tab: string) => {
@@ -267,41 +310,47 @@ export default function EditorPage() {
     }
   };
 
+  // Determine connection status from provider
+  const isConnected = providerRef.current?.wsconnected === true;
+
+  // Fires once when the saved-snippet IDE becomes usable.
+  useEffect(() => {
+    analytics.ideOpened({ authenticated: !!user, language: getLanguageName(tab) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
       <IDEWorkspace
         tabs={tabs}
         activeTab={tab}
         onTabChange={(tabId) => setTab(tabId as 'html' | 'css' | 'js')}
-        isConnected={status === 'connected'}
-        userCount={users.length}
+        isConnected={isConnected}
+        userCount={collaborators.length + 1}
         onSave={() => doSave(false)}
         onShare={doShare}
         title={snippet?.title}
         onRename={doRename}
         preview={{ html: htmlText, css: cssText, js: jsText }}
         status={{
-          isConnected: status === 'connected',
+          isConnected,
           language: getLanguageName(tab),
           cursorPosition,
         }}
+        collaborators={collaborators.map(c => ({
+          id: c.user.id,
+          name: c.user.name,
+          color: c.user.color,
+          currentTab: c.activeFile,
+        }))}
       >
-        <div className="ide-typing-indicators">
-          {Object.values(typing[tab] || {}).filter((u: any) => u.id !== user?.id).slice(0, 3).map((u: any) => (
-            <span key={u.id} className="ide-typing-pill" style={{ borderColor: u.color, color: u.color }}>{u.name} typing…</span>
-          ))}
-        </div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <div style={{ display: tab === 'html' ? 'block' : 'none', height: '100%' }}>
             <CodeEditor
               language="html"
               yText={yHtml}
               awareness={awareness}
-              onCursor={(pos) => {
-                setCursorPosition({ line: pos.lineNumber, column: pos.column });
-                socket?.emit('cursor-move', { snippetId, language: 'html', position: pos });
-              }}
-              onChange={handleTyping}
+              onCursor={(pos) => setCursorPosition({ line: pos.lineNumber, column: pos.column })}
             />
           </div>
           <div style={{ display: tab === 'css' ? 'block' : 'none', height: '100%' }}>
@@ -309,11 +358,7 @@ export default function EditorPage() {
               language="css"
               yText={yCss}
               awareness={awareness}
-              onCursor={(pos) => {
-                setCursorPosition({ line: pos.lineNumber, column: pos.column });
-                socket?.emit('cursor-move', { snippetId, language: 'css', position: pos });
-              }}
-              onChange={handleTyping}
+              onCursor={(pos) => setCursorPosition({ line: pos.lineNumber, column: pos.column })}
             />
           </div>
           <div style={{ display: tab === 'js' ? 'block' : 'none', height: '100%' }}>
@@ -321,11 +366,7 @@ export default function EditorPage() {
               language="javascript"
               yText={yJs}
               awareness={awareness}
-              onCursor={(pos) => {
-                setCursorPosition({ line: pos.lineNumber, column: pos.column });
-                socket?.emit('cursor-move', { snippetId, language: 'js', position: pos });
-              }}
-              onChange={handleTyping}
+              onCursor={(pos) => setCursorPosition({ line: pos.lineNumber, column: pos.column })}
             />
           </div>
         </div>
@@ -338,7 +379,12 @@ export default function EditorPage() {
         </div>
       )}
       <UserPresence
-        users={users}
+        users={collaborators.map(c => ({
+          id: c.user.id,
+          name: c.user.name,
+          color: c.user.color,
+          currentTab: c.activeFile,
+        }))}
         isAutosaving={showAutosaveToast}
         onBack={() => {
           const canGoBack = (window.history.state && (window.history.state as any).idx > 0);

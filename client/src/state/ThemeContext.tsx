@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { analytics } from '../analytics/events';
 
 interface ThemeContextType {
   isLight: boolean;
@@ -32,6 +33,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         document.documentElement.removeAttribute('data-theme');
         localStorage.setItem('theme', 'dark');
       }
+      // Only user toggles are reported; the mount-time restore above is not a change.
+      analytics.themeChanged(next ? 'light' : 'dark');
       return next;
     });
   };

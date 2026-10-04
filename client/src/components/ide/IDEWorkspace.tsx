@@ -9,6 +9,13 @@ export interface IDEWorkspaceTab {
   icon: string;
 }
 
+export interface Collaborator {
+  id: string;
+  name: string;
+  color: string;
+  currentTab?: string;
+}
+
 interface Props {
   tabs: IDEWorkspaceTab[];
   activeTab: string;
@@ -31,6 +38,7 @@ interface Props {
   title?: string;
   onRename?: (newTitle: string) => void;
   statusBadge?: ReactNode;
+  collaborators?: Collaborator[];
 }
 
 const PREVIEW_WIDTH_KEY = 'ide-preview-width';
@@ -55,6 +63,7 @@ export default function IDEWorkspace({
   title,
   onRename,
   statusBadge,
+  collaborators = [],
 }: Props) {
   const [previewWidth, setPreviewWidth] = useState<number>(() => {
     const saved = localStorage.getItem(PREVIEW_WIDTH_KEY);
@@ -105,6 +114,7 @@ export default function IDEWorkspace({
             title={title}
             onRename={onRename}
             statusBadge={statusBadge}
+            collaborators={collaborators}
           />
           <div className={`ide-editor-content${isResizing ? ' ide-resizing' : ''}`} ref={contentRef}>
             <div className="ide-code-panel">{children}</div>
@@ -122,7 +132,7 @@ export default function IDEWorkspace({
               title="Drag to resize preview"
             />
             <div className="ide-preview-panel" style={{ width: `${previewWidth}%` }}>
-              <LivePreview html={preview.html} css={preview.css} js={preview.js} />
+              <LivePreview html={preview.html} css={preview.css} js={preview.js} language={status.language} />
             </div>
           </div>
         </div>

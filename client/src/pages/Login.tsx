@@ -48,7 +48,7 @@ export default function Login() {
             </Link>
             <h1 className="auth-title">Login</h1>
             {error && <div className="banner auth-banner-error">{error}</div>}
-            <form className="auth-form-grid" onSubmit={submit}>
+            <form className="auth-form-grid ph-no-capture" onSubmit={submit}>
               <div className="auth-field">
                 <label>Email</label>
                 <input
