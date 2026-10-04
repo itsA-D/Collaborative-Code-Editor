@@ -25,7 +25,7 @@ export default function Register() {
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         if (!error.response) {
-          setError('Cannot reach the server. Start the backend on http://localhost:4000 and try again.');
+          setError('Cannot reach the server. Please try again or contact the administrator.');
         } else {
           setError(error.response.data?.message || `Registration failed (${error.response.status}).`);
         }

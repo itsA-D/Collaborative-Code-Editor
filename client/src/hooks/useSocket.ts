@@ -9,7 +9,10 @@ export function useSocket(token: string | null) {
     if (!token) return;
     setStatus('connecting');
     const envAny = (import.meta as any).env;
-    const url = envAny.VITE_SOCKET_URL || envAny.VITE_API_URL || 'http://localhost:4000';
+    const defaultSocketUrl = envAny.DEV
+      ? 'http://localhost:4000'
+      : 'https://collaborative-editor-backend-472m.onrender.com';
+    const url = envAny.VITE_SOCKET_URL || envAny.VITE_API_URL || defaultSocketUrl;
     const s = io(url, { auth: { token } });
     socketRef.current = s;
 

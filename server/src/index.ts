@@ -246,12 +246,20 @@ async function bootstrap() {
     }
   });
 
-  // Yjs WebSocket server for CRDT collaboration
-  const yjsPort = env.YJS_PORT || 1234;
-  const yjsWss = new WebSocketServer({ 
-    port: yjsPort,
+  // Yjs WebSocket server for CRDT collaboration.
+  // Attached to the same HTTP server under /yjs so a single public port
+  // works on hosts that expose only one web port (Render/Railway).
+  const yjsWss = new WebSocketServer({
+    noServer: true,
     clientTracking: true,
     perMessageDeflate: false // Disable compression for CRDT binary data
+  });
+
+  server.on('upgrade', (req, socket, head) => {
+    const { pathname } = new URL(req.url || '', 'http://localhost');
+    if (pathname === '/yjs' || pathname.startsWith('/yjs/')) {
+      yjsWss.handleUpgrade(req, socket, head, (ws) => yjsWss.emit('connection', ws, req));
+    }
   });
 
   // Autosave all active docs periodically
@@ -334,12 +342,8 @@ async function bootstrap() {
     setupWSConnection(conn, req, { docName, doc });
   });
 
-  yjsWss.on('listening', () => {
-    console.log(`Yjs WebSocket server listening on port ${yjsPort}`);
-  });
-
   server.listen(env.PORT, () => {
-    console.log(`Server listening on port ${env.PORT}`);
+    console.log(`Server listening on port ${env.PORT} (API + Socket.IO + Yjs at /yjs)`);
   });
 }
 
